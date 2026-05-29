@@ -172,6 +172,21 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // ⚠️ Legacy payout_methods table may have id as INT (from old PHP schema) — migrate to VARCHAR(100)
+    try {
+      const [idColInfo] = await connection.query(`SHOW COLUMNS FROM payout_methods LIKE 'id'`);
+      if (idColInfo.length > 0 && idColInfo[0].Type && !idColInfo[0].Type.toLowerCase().includes('varchar')) {
+        console.log('⚡ Migrating payout_methods.id from INT to VARCHAR(100)...');
+        // Drop FK on payout_tiers first, change id, then re-add FK
+        await connection.query('ALTER TABLE payout_tiers DROP FOREIGN KEY IF EXISTS payout_tiers_ibfk_1').catch(() => {});
+        await connection.query(`ALTER TABLE payout_methods MODIFY COLUMN id VARCHAR(100) NOT NULL`);
+        await connection.query(`ALTER TABLE payout_tiers MODIFY COLUMN method_id VARCHAR(100) NOT NULL`);
+        console.log('✅ payout_methods.id migrated to VARCHAR(100).');
+      }
+    } catch (e) {
+      console.warn('⚠️ payout_methods id column migration note:', e.message);
+    }
+
     // ⚠️ Legacy payout_methods table may be missing columns added in newer schema versions — ensure they exist
     await addColumnIfNotExists(connection, 'payout_methods', 'description', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'payout_methods', 'icon_url', 'TEXT NULL');
