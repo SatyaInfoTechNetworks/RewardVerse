@@ -241,10 +241,16 @@ export async function initializeDatabase() {
     try {
       await connection.query("ALTER TABLE banners MODIFY COLUMN active TINYINT(1) NOT NULL DEFAULT 1");
     } catch (e) { /* column doesn't exist, safe to ignore */ }
-    // Ensure is_active exists and has correct type
+    // Ensure is_active has correct default
     try {
       await connection.query("ALTER TABLE banners MODIFY COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1");
     } catch (e) { /* safe to ignore */ }
+    // ⚠️ Legacy PHP banners table may have 'order_index' column without a default — fix it
+    try {
+      await connection.query("ALTER TABLE banners MODIFY COLUMN order_index INT NOT NULL DEFAULT 0");
+    } catch (e) { /* column doesn't exist, safe to ignore */ }
+    // Ensure order_index exists if this is a mixed-state DB
+    await addColumnIfNotExists(connection, 'banners', 'order_index', 'INT NOT NULL DEFAULT 0');
 
     // 11. lifafas Table
     await connection.query(`

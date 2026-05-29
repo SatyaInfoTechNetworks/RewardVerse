@@ -808,20 +808,29 @@ export const createBanner = async (req, res) => {
     if (!image_url) return res.status(400).json({ success: false, message: 'Image URL is required' });
 
     const activeValue = is_active !== false ? 1 : 0;
+    const orderValue = parseInt(display_order || 0);
     let result;
     try {
-      // Try modern schema first (is_active column)
+      // Modern schema: is_active + display_order
       [result] = await pool.query(
-        `INSERT INTO banners (title, description, image_url, action_url, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-        [title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), activeValue]
+        `INSERT INTO banners (title, description, image_url, action_url, display_order, order_index, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [title || '', description || '', image_url, action_url || '', orderValue, orderValue, activeValue]
       );
     } catch (insertErr) {
-      if (insertErr.code === 'ER_BAD_FIELD_ERROR' || insertErr.errno === 1054) {
-        // Legacy DB: try with 'active' column instead
-        [result] = await pool.query(
-          `INSERT INTO banners (title, description, image_url, action_url, display_order, active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-          [title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), activeValue]
-        );
+      if (insertErr.code === 'ER_NO_DEFAULT_FOR_FIELD' || insertErr.code === 'ER_BAD_FIELD_ERROR' || insertErr.errno === 1364 || insertErr.errno === 1054) {
+        try {
+          // Legacy schema variant: has order_index + active
+          [result] = await pool.query(
+            `INSERT INTO banners (title, description, image_url, action_url, order_index, active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+            [title || '', description || '', image_url, action_url || '', orderValue, activeValue]
+          );
+        } catch (legacyErr) {
+          // Last resort: minimal insert
+          [result] = await pool.query(
+            `INSERT INTO banners (title, description, image_url, action_url, created_at) VALUES (?, ?, ?, ?, NOW())`,
+            [title || '', description || '', image_url, action_url || '']
+          );
+        }
       } else {
         throw insertErr;
       }
@@ -837,10 +846,25 @@ export const updateBanner = async (req, res) => {
   try {
     const bannerId = req.params.id;
     const { title, description, image_url, action_url, display_order, is_active } = req.body;
-    await pool.query(
-      `UPDATE banners SET title=?, description=?, image_url=?, action_url=?, display_order=?, is_active=? WHERE id=?`,
-      [title || '', description || '', image_url || '', action_url || '', parseInt(display_order || 0), is_active ? 1 : 0, bannerId]
-    );
+    const orderValue = parseInt(display_order || 0);
+    const activeValue = is_active ? 1 : 0;
+    try {
+      // Modern schema
+      await pool.query(
+        `UPDATE banners SET title=?, description=?, image_url=?, action_url=?, display_order=?, order_index=?, is_active=? WHERE id=?`,
+        [title || '', description || '', image_url || '', action_url || '', orderValue, orderValue, activeValue, bannerId]
+      );
+    } catch (updateErr) {
+      if (updateErr.code === 'ER_BAD_FIELD_ERROR' || updateErr.errno === 1054) {
+        // Legacy schema: update order_index + active
+        await pool.query(
+          `UPDATE banners SET title=?, description=?, image_url=?, action_url=?, order_index=?, active=? WHERE id=?`,
+          [title || '', description || '', image_url || '', action_url || '', orderValue, activeValue, bannerId]
+        );
+      } else {
+        throw updateErr;
+      }
+    }
     res.json({ success: true, message: 'Banner updated' });
   } catch (error) {
     console.error('Update Banner Error:', error);
