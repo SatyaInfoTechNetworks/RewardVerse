@@ -243,6 +243,58 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // ⚠️ Legacy PHP payout_tiers uses 'payout_method_id' instead of 'method_id' — rename it
+    try {
+      const [pmCol] = await connection.query(`SHOW COLUMNS FROM payout_tiers LIKE 'payout_method_id'`);
+      if (pmCol.length > 0) {
+        console.log('⚡ Renaming payout_tiers.payout_method_id → method_id...');
+        // Drop any FK on payout_method_id first
+        const dbNameT = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
+        const [fkT] = await connection.query(`
+          SELECT kcu.CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+          JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+            ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA
+          WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = 'payout_tiers' AND kcu.COLUMN_NAME = 'payout_method_id'
+        `, [dbNameT]);
+        for (const fk of fkT) {
+          await connection.query(`ALTER TABLE payout_tiers DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
+        }
+        await connection.query(`ALTER TABLE payout_tiers CHANGE COLUMN payout_method_id method_id VARCHAR(100) NOT NULL`);
+        console.log('✅ payout_tiers.payout_method_id renamed to method_id.');
+      }
+    } catch (e) {
+      console.warn('⚠️ payout_tiers column rename note:', e.message);
+    }
+
+    // ⚠️ Ensure payout_tiers missing columns exist
+    await addColumnIfNotExists(connection, 'payout_tiers', 'method_id', 'VARCHAR(100) NOT NULL DEFAULT \'\'');
+    await addColumnIfNotExists(connection, 'payout_tiers', 'coin_cost', 'INT NOT NULL DEFAULT 0');
+    await addColumnIfNotExists(connection, 'payout_tiers', 'monetary_value', 'DECIMAL(10,2) NOT NULL DEFAULT 0.00');
+    await addColumnIfNotExists(connection, 'payout_tiers', 'currency_symbol', "VARCHAR(10) DEFAULT '₹'");
+    await addColumnIfNotExists(connection, 'payout_tiers', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in payout_tiers
+    try {
+      const dbNameT2 = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
+      const [tierCols] = await connection.query(`
+        SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payout_tiers'
+          AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL AND COLUMN_KEY != 'PRI'
+      `, [dbNameT2]);
+      for (const col of tierCols) {
+        const dt = col.DATA_TYPE.toLowerCase();
+        const def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0'
+          : (dt.includes('timestamp') || dt.includes('datetime') ? 'CURRENT_TIMESTAMP' : "''");
+        console.log(`  🔧 Setting default for legacy payout_tiers column [${col.COLUMN_NAME}] → DEFAULT ${def}`);
+        await connection.query(`ALTER TABLE payout_tiers MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NOT NULL DEFAULT ${def}`).catch(e =>
+          console.warn(`  ⚠️ Could not set default for payout_tiers.[${col.COLUMN_NAME}]:`, e.message)
+        );
+      }
+    } catch (e) {
+      console.warn('⚠️ payout_tiers legacy column defaults sweep note:', e.message);
+    }
+
     // 7. app_configs Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS app_configs (
