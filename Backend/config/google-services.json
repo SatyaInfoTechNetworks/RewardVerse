@@ -1,55 +1,62 @@
 {
   "project_info": {
-    "project_number": "343915058720",
-    "project_id": "stuearnindia",
-    "storage_bucket": "stuearnindia.firebasestorage.app"
+    "project_number": "941303609794",
+    "project_id": "rewardverse-56f21",
+    "storage_bucket": "rewardverse-56f21.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:343915058720:android:af7e3368bb9e4fc6104e45",
+        "mobilesdk_app_id": "1:941303609794:android:674389f4044aff83d9fe5b",
         "android_client_info": {
-          "package_name": "com.thinkforgeapps.stuearnindia"
+          "package_name": "com.satyainfotechnetworks.rewardverse"
         }
       },
       "oauth_client": [
         {
-          "client_id": "343915058720-715e7akjrdc02etl7tf2cqi0fq2pvkd9.apps.googleusercontent.com",
+          "client_id": "941303609794-7vj437ft0lkr1ah3l3gpj6ii7gigcv63.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.thinkforgeapps.stuearnindia",
+            "package_name": "com.satyainfotechnetworks.rewardverse",
+            "certificate_hash": "fbaed5aa2e4c49bf1d66fcf77a31c86587321407"
+          }
+        },
+        {
+          "client_id": "941303609794-ashhli7lfrth0otgc150dl2s716k0dtk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.satyainfotechnetworks.rewardverse",
             "certificate_hash": "8f2396bd5206ed5bdcf42fcf4bf8be0651050e91"
           }
         },
         {
-          "client_id": "343915058720-c1kqkhbeqp23mqlqm1m7vr6av1tbh3a8.apps.googleusercontent.com",
+          "client_id": "941303609794-h17htd89mqvipnn8tkg9fi6e37df0aa5.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.thinkforgeapps.stuearnindia",
-            "certificate_hash": "b73abf40b16eea3db4a3b40911d3d656e81a5e02"
+            "package_name": "com.satyainfotechnetworks.rewardverse",
+            "certificate_hash": "03ba538cd74ac7f649baf0a344c1d6172ecf330f"
           }
         },
         {
-          "client_id": "343915058720-2d89kt7ns69uaf2f16dpd9d0p0trrccv.apps.googleusercontent.com",
+          "client_id": "941303609794-is1844ak8i2cdivr5a5kf3djoa3caqmp.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyCZCPh3jNOB2KrnyiqHw2kVr5kd_ATZKJA"
+          "current_key": "AIzaSyAyf6QFLI3cyKvI6PihM1mub0bj4Yw9yBo"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "343915058720-2d89kt7ns69uaf2f16dpd9d0p0trrccv.apps.googleusercontent.com",
+              "client_id": "941303609794-is1844ak8i2cdivr5a5kf3djoa3caqmp.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
         }
-      },
-      "admob_app_id": "ca-app-pub-3424309802767745~1396691771"
+      }
     }
   ],
   "configuration_version": "1"
