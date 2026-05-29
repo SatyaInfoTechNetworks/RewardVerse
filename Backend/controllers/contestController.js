@@ -290,7 +290,7 @@ export const drawContestWinners = async (req, res) => {
           LEFT JOIN referral_uses ru ON ru.referrer_id = cp.user_id AND ru.created_at > cp.joined_at AND ru.created_at BETWEEN ? AND ?
           WHERE cp.contest_id = ?
           GROUP BY cp.user_id, u.name
-          ORDER BY scoreValue DESC, cp.joined_at ASC
+          ORDER BY scoreValue DESC, MIN(cp.joined_at) ASC
         `;
         rankedParams = [contest.start_time, contest.end_time, contestId];
       } else if (contest.type === 'EARNINGS_CONTEST') {
@@ -301,7 +301,7 @@ export const drawContestWinners = async (req, res) => {
           LEFT JOIN transactions t ON t.user_id = cp.user_id AND t.type = 'CREDIT' AND t.source IN ('OFFER', 'TASK', 'WATCH_VIDEO', 'VIDEO_AD', 'OFFER_COMPLETION') AND t.created_at > cp.joined_at AND t.created_at BETWEEN ? AND ?
           WHERE cp.contest_id = ?
           GROUP BY cp.user_id, u.name
-          ORDER BY scoreValue DESC, cp.joined_at ASC
+          ORDER BY scoreValue DESC, MIN(cp.joined_at) ASC
         `;
         rankedParams = [contest.start_time, contest.end_time, contestId];
       } else {
@@ -312,7 +312,7 @@ export const drawContestWinners = async (req, res) => {
           JOIN users u ON cp.user_id = u.id
           WHERE cp.contest_id = ?
           GROUP BY cp.user_id, u.name
-          ORDER BY cp.joined_at ASC
+          ORDER BY MIN(cp.joined_at) ASC
         `;
         rankedParams = [contestId];
       }
@@ -913,7 +913,7 @@ export const getContestLeaderboard = async (req, res) => {
         LEFT JOIN referral_uses ru ON ru.referrer_id = cp.user_id AND ru.created_at > cp.joined_at AND ru.created_at BETWEEN ? AND ?
         WHERE cp.contest_id = ?
         GROUP BY cp.user_id, u.name
-        ORDER BY scoreValue DESC, cp.joined_at ASC
+        ORDER BY scoreValue DESC, MIN(cp.joined_at) ASC
         LIMIT 10
       `;
       leaderboardParams = [contest.start_time, contest.end_time, contestId];
@@ -925,7 +925,7 @@ export const getContestLeaderboard = async (req, res) => {
         LEFT JOIN transactions t ON t.user_id = cp.user_id AND t.type = 'CREDIT' AND t.source IN ('OFFER', 'TASK', 'WATCH_VIDEO', 'VIDEO_AD', 'OFFER_COMPLETION') AND t.created_at > cp.joined_at AND t.created_at BETWEEN ? AND ?
         WHERE cp.contest_id = ?
         GROUP BY cp.user_id, u.name
-        ORDER BY scoreValue DESC, cp.joined_at ASC
+        ORDER BY scoreValue DESC, MIN(cp.joined_at) ASC
         LIMIT 10
       `;
       leaderboardParams = [contest.start_time, contest.end_time, contestId];
@@ -937,7 +937,7 @@ export const getContestLeaderboard = async (req, res) => {
         JOIN users u ON e.user_id = u.id
         WHERE e.contest_id = ?
         GROUP BY e.user_id, u.name
-        ORDER BY scoreValue DESC, e.created_at ASC
+        ORDER BY scoreValue DESC, MIN(e.created_at) ASC
         LIMIT 10
       `;
       leaderboardParams = [contestId];
