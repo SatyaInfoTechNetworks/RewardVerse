@@ -20,7 +20,8 @@ export default function DeleteAccount() {
       const res = await fetch(`${API_BASE}/api/user/delete-account`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify({ email, reason })
       });
