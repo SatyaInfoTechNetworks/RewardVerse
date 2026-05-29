@@ -70,9 +70,9 @@ export const getEarnings = async (req, res) => {
               o.title as offer_title, o.icon_url as offer_icon,
               oc.offer_name as completion_offer_name
        FROM transactions t
-       LEFT JOIN user_offer_progress uop ON t.reference_id = uop.click_id AND t.source = 'OFFER'
+       LEFT JOIN user_offer_progress uop ON (t.reference_id COLLATE utf8mb4_unicode_ci) = uop.click_id AND t.source = 'OFFER'
        LEFT JOIN offers o ON uop.offer_id = o.id
-       LEFT JOIN offer_completions oc ON t.reference_id = oc.completion_id
+       LEFT JOIN offer_completions oc ON (t.reference_id COLLATE utf8mb4_unicode_ci) = oc.completion_id
        WHERE t.user_id = ? AND (t.type = 'CREDIT' OR t.source LIKE '%REVERSAL%')
        ORDER BY t.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -572,7 +572,7 @@ export const getTransactions = async (req, res) => {
       `SELECT t.id, t.user_id, t.amount, t.type, t.source, t.reference_id, t.description, t.created_at,
               o.icon_url as offer_icon
        FROM transactions t
-       LEFT JOIN user_offer_progress uop ON t.reference_id = uop.click_id AND t.source = 'OFFER'
+       LEFT JOIN user_offer_progress uop ON (t.reference_id COLLATE utf8mb4_unicode_ci) = uop.click_id AND t.source = 'OFFER'
        LEFT JOIN offers o ON uop.offer_id = o.id
        WHERE t.user_id = ? 
        ORDER BY t.created_at DESC`,

@@ -301,3 +301,86 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* =========================================================================
+   ADMIN PORTAL THEME OVERRIDES (LIGHT CONTRAST & READABILITY ENHANCEMENTS)
+   ========================================================================= */
+body.hold-transition.sidebar-mini {
+  background-color: #f4f6f9 !important;
+  color: #333333 !important;
+}
+
+body.hold-transition.sidebar-mini h1,
+body.hold-transition.sidebar-mini h2,
+body.hold-transition.sidebar-mini h3,
+body.hold-transition.sidebar-mini h4,
+body.hold-transition.sidebar-mini h5,
+body.hold-transition.sidebar-mini h6 {
+  color: #1a1a24 !important; /* Elegant dark navy-charcoal for headings */
+}
+
+body.hold-transition.sidebar-mini .form-label {
+  color: #4a5568 !important; /* Clearly readable slate grey for labels */
+  font-weight: 600 !important;
+}
+
+body.hold-transition.sidebar-mini .glass-panel {
+  background: #ffffff !important; /* Clean premium white panel backdrop */
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: #2d3748 !important;
+}
+
+body.hold-transition.sidebar-mini .glass-input {
+  background: #f8fafc !important; /* Soft light slate background */
+  border: 1px solid #cbd5e1 !important; /* Solid visible border */
+  color: #1e293b !important; /* Crisp charcoal text */
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+}
+
+body.hold-transition.sidebar-mini .glass-input:focus {
+  background: #ffffff !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15) !important;
+  color: #1e293b !important;
+}
+
+body.hold-transition.sidebar-mini .glass-input::placeholder {
+  color: #94a3b8 !important; /* High contrast placeholder text */
+  opacity: 1 !important;
+}
+
+body.hold-transition.sidebar-mini select.glass-input {
+  background-color: #f8fafc !important;
+  color: #1e293b !important;
+}
+
+body.hold-transition.sidebar-mini .btn-secondary {
+  background: #e2e8f0 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+body.hold-transition.sidebar-mini .btn-secondary:hover {
+  background: #cbd5e1 !important;
+  color: #1e293b !important;
+}
+
+body.hold-transition.sidebar-mini .glass-table th {
+  color: #475569 !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+  font-weight: 700 !important;
+}
+
+body.hold-transition.sidebar-mini .glass-table td {
+  color: #1e293b !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+body.hold-transition.sidebar-mini .glass-table tr:hover td {
+  background: rgba(168, 85, 247, 0.04) !important;
+}
+
+

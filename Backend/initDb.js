@@ -558,6 +558,7 @@ export async function initializeDatabase() {
       console.log('⚡ Ensuring column types are flexible (legacy ENUM to VARCHAR)...');
       await connection.query('ALTER TABLE transactions MODIFY COLUMN type VARCHAR(20) NOT NULL');
       await connection.query('ALTER TABLE transactions MODIFY COLUMN source VARCHAR(50) NOT NULL');
+      await connection.query('ALTER TABLE transactions MODIFY COLUMN reference_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL').catch(() => {});
       await connection.query('ALTER TABLE withdrawals MODIFY COLUMN method VARCHAR(50) NOT NULL');
       await connection.query('ALTER TABLE withdrawals MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT \'PENDING\'');
       await connection.query('ALTER TABLE contest_entries MODIFY COLUMN entry_source VARCHAR(50) NOT NULL');
