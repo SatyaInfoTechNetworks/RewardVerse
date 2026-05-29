@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { sendNotification } from '../utils/notifications.js';
 import { sendAdminTelegramAlert } from '../utils/telegram.js';
+import { checkAndRewardReferrer } from '../utils/referralHelper.js';
 
 // Constant-time string comparison to prevent timing attacks
 function safeCompare(a, b) {
@@ -1338,7 +1339,7 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
       const useId = uuidv4();
       await connection.query(
         `INSERT INTO referral_uses (id, referrer_id, referred_user_id, referral_code, status, offers_completed_count) 
-         VALUES (?, ?, ?, ?, 'PENDING', 1)`,
+         VALUES (?, ?, ?, ?, 'PENDING', 0)`,
         [useId, referrerId, referredUserId, referrerCode]
       );
       
@@ -1346,40 +1347,11 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
       refUse = newUseRows[0];
     } else {
       refUse = useRows[0];
-      await connection.query(
-        'UPDATE referral_uses SET offers_completed_count = offers_completed_count + 1 WHERE id = ?',
-        [refUse.id]
-      );
-      refUse.offers_completed_count += 1;
     }
 
-    const threshold = parseInt(settings.offers_required);
-    if (refUse.status === 'PENDING' && refUse.offers_completed_count >= threshold) {
-      await connection.query(
-        'UPDATE referral_uses SET status = "COMPLETED", rewarded_at = NOW() WHERE id = ?',
-        [refUse.id]
-      );
-
-      const bonusCoins = parseFloat(settings.bonus_coins);
-
-      await connection.query(
-        'UPDATE users SET balance = balance + ? WHERE id = ?',
-        [bonusCoins, referrerId]
-      );
-
-      const transId = uuidv4();
-      await connection.query(
-        `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at) 
-         VALUES (?, ?, ?, 'CREDIT', 'REFERRAL_BONUS', ?, ?, NOW())`,
-        [transId, referrerId, bonusCoins, `Referral Milestone Bonus (Friend completed ${threshold} tasks)`, refUse.id]
-      );
-
-      await sendNotification(
-        referrerId,
-        "Referral Bonus Claimed!",
-        `You received ${bonusCoins.toFixed(0)} coins because your referred friend completed ${threshold} tasks!`
-      );
-    }
+    // Dynamic referral reward conditions (MIN_TASKS or LIFETIME_COINS)
+    await checkAndRewardReferrer(connection, referredUserId, 'MIN_TASKS', { incrementTasks: 1 });
+    await checkAndRewardReferrer(connection, referredUserId, 'LIFETIME_COINS', { incomingCoins: rewardAmount });
 
     const commPercent = parseInt(settings.commission_percent);
     if (commPercent > 0) {

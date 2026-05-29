@@ -990,7 +990,33 @@ export const updatePayoutMethod = async (req, res) => {
 export const getReferralSettings = async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM referral_settings LIMIT 1');
-    res.json({ success: true, settings: rows[0] || { bonus_coins: 10, commission_percent: 10, offers_required: 2 } });
+    const defaultSettings = {
+      bonus_coins: 10,
+      commission_percent: 10,
+      offers_required: 2,
+      description_text: '',
+      referee_signup_bonus: 0,
+      referrer_reward_coins: 10,
+      referral_condition_type: 'MIN_TASKS',
+      referral_condition_threshold: 2
+    };
+    
+    if (rows.length > 0) {
+      const s = rows[0];
+      res.json({ 
+        success: true, 
+        settings: {
+          ...defaultSettings,
+          ...s,
+          referee_signup_bonus: s.referee_signup_bonus ?? 0,
+          referrer_reward_coins: s.referrer_reward_coins ?? s.bonus_coins ?? 10,
+          referral_condition_type: s.referral_condition_type || 'MIN_TASKS',
+          referral_condition_threshold: s.referral_condition_threshold ?? s.offers_required ?? 2
+        } 
+      });
+    } else {
+      res.json({ success: true, settings: defaultSettings });
+    }
   } catch (error) {
     console.error('Get Referral Settings Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -999,24 +1025,53 @@ export const getReferralSettings = async (req, res) => {
 
 export const updateReferralSettings = async (req, res) => {
   try {
-    const { bonus_coins, commission_percent, offers_required, description_text } = req.body;
+    const { 
+      bonus_coins, 
+      commission_percent, 
+      offers_required, 
+      description_text,
+      referee_signup_bonus,
+      referrer_reward_coins,
+      referral_condition_type,
+      referral_condition_threshold
+    } = req.body;
+
     const [existing] = await pool.query('SELECT id FROM referral_settings LIMIT 1');
+
+    const cleanRefereeSignupBonus = parseFloat(referee_signup_bonus !== undefined ? referee_signup_bonus : 0);
+    const cleanReferrerRewardCoins = parseFloat(referrer_reward_coins !== undefined ? referrer_reward_coins : (bonus_coins || 10));
+    const cleanConditionType = referral_condition_type || 'MIN_TASKS';
+    const cleanConditionThreshold = parseFloat(referral_condition_threshold !== undefined ? referral_condition_threshold : (offers_required || 2));
+    const cleanCommPercent = parseInt(commission_percent || 10);
+    const cleanDescription = description_text || '';
 
     if (existing.length > 0) {
       await pool.query(
-        'UPDATE referral_settings SET bonus_coins=?, commission_percent=?, offers_required=?, description_text=? WHERE id=?',
-        [parseFloat(bonus_coins || 10), parseInt(commission_percent || 10), parseInt(offers_required || 2), description_text || '', existing[0].id]
+        `UPDATE referral_settings 
+         SET bonus_coins=?, commission_percent=?, offers_required=?, description_text=?,
+             referee_signup_bonus=?, referrer_reward_coins=?, referral_condition_type=?, referral_condition_threshold=? 
+         WHERE id=?`,
+        [
+          cleanReferrerRewardCoins, cleanCommPercent, Math.round(cleanConditionThreshold), cleanDescription,
+          cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold,
+          existing[0].id
+        ]
       );
     } else {
       await pool.query(
-        'INSERT INTO referral_settings (bonus_coins, commission_percent, offers_required, description_text) VALUES (?, ?, ?, ?)',
-        [parseFloat(bonus_coins || 10), parseInt(commission_percent || 10), parseInt(offers_required || 2), description_text || '']
+        `INSERT INTO referral_settings 
+          (bonus_coins, commission_percent, offers_required, description_text, referee_signup_bonus, referrer_reward_coins, referral_condition_type, referral_condition_threshold) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          cleanReferrerRewardCoins, cleanCommPercent, Math.round(cleanConditionThreshold), cleanDescription,
+          cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold
+        ]
       );
     }
-    res.json({ success: true, message: 'Referral settings updated' });
+    res.json({ success: true, message: 'Referral settings updated successfully' });
   } catch (error) {
     console.error('Update Referral Settings Error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
   }
 };
 

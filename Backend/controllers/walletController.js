@@ -1,5 +1,6 @@
 import pool from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
+import { checkAndRewardReferrer } from '../utils/referralHelper.js';
 
 // 1. Get Wallet Balance and summary stats
 export const getWalletBalance = async (req, res) => {
@@ -543,6 +544,9 @@ export const requestWithdrawal = async (req, res) => {
       'UPDATE users SET balance = balance - ? WHERE id = ?',
       [withdrawCoins, userId]
     );
+
+    // H. Trigger "FIRST_REDEEM" dynamic referral condition check
+    await checkAndRewardReferrer(connection, userId, 'FIRST_REDEEM');
 
     await connection.commit();
 

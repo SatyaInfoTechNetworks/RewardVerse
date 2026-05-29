@@ -377,6 +377,10 @@ export async function initializeDatabase() {
 
     // 22. referral_settings: ensure description_text column exists
     await addColumnIfNotExists(connection, 'referral_settings', 'description_text', 'TEXT NULL');
+    await addColumnIfNotExists(connection, 'referral_settings', 'referee_signup_bonus', 'DECIMAL(10, 2) DEFAULT 0.00');
+    await addColumnIfNotExists(connection, 'referral_settings', 'referrer_reward_coins', 'DECIMAL(10, 2) DEFAULT 10.00');
+    await addColumnIfNotExists(connection, 'referral_settings', 'referral_condition_type', "VARCHAR(50) DEFAULT 'MIN_TASKS'");
+    await addColumnIfNotExists(connection, 'referral_settings', 'referral_condition_threshold', 'DECIMAL(10, 2) DEFAULT 2.00');
 
     // 25. visit_earn_tasks Table
     await connection.query(`

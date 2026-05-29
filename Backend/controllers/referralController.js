@@ -24,23 +24,41 @@ export const getReferralInfo = async (req, res) => {
         bonus_coins DECIMAL(10, 2) DEFAULT 10.00,
         commission_percent INT DEFAULT 10,
         offers_required INT DEFAULT 2,
-        description_text TEXT NULL
+        description_text TEXT NULL,
+        referee_signup_bonus DECIMAL(10, 2) DEFAULT 0.00,
+        referrer_reward_coins DECIMAL(10, 2) DEFAULT 10.00,
+        referral_condition_type VARCHAR(50) DEFAULT 'MIN_TASKS',
+        referral_condition_threshold DECIMAL(10, 2) DEFAULT 2.00
       )`
     );
 
     const [settingsRows] = await pool.query('SELECT * FROM referral_settings LIMIT 1');
-    let settings = { bonus_coins: 1000, commission_percent: 10, offers_required: 2, description_text: "Refer friends to earn more!" };
+    let settings = { 
+      bonus_coins: 1000, 
+      commission_percent: 10, 
+      offers_required: 2, 
+      description_text: "Refer friends to earn more!",
+      referee_signup_bonus: 0,
+      referrer_reward_coins: 10,
+      referral_condition_type: 'MIN_TASKS',
+      referral_condition_threshold: 2
+    };
     
     if (settingsRows.length === 0) {
       await pool.query(
         "INSERT INTO referral_settings (bonus_coins, commission_percent, offers_required, description_text) VALUES (1000, 10, 2, 'Refer friends to earn more!')"
       );
     } else {
+      const s = settingsRows[0];
       settings = {
-        bonus_coins: Math.round(parseFloat(settingsRows[0].bonus_coins)),
-        commission_percent: parseInt(settingsRows[0].commission_percent),
-        offers_required: parseInt(settingsRows[0].offers_required),
-        description_text: settingsRows[0].description_text || "Refer friends to earn more!"
+        bonus_coins: Math.round(parseFloat(s.bonus_coins)),
+        commission_percent: parseInt(s.commission_percent),
+        offers_required: parseInt(s.offers_required),
+        description_text: s.description_text || "Refer friends to earn more!",
+        referee_signup_bonus: parseFloat(s.referee_signup_bonus ?? 0),
+        referrer_reward_coins: parseFloat(s.referrer_reward_coins ?? s.bonus_coins ?? 10),
+        referral_condition_type: s.referral_condition_type || 'MIN_TASKS',
+        referral_condition_threshold: parseFloat(s.referral_condition_threshold ?? s.offers_required ?? 2)
       };
     }
 
@@ -219,18 +237,32 @@ export const getReferralSummary = async (req, res) => {
 export const getReferralConfig = async (req, res) => {
   try {
     const [settingsRows] = await pool.query('SELECT * FROM referral_settings LIMIT 1');
-    let settings = { bonus_coins: 1000, commission_percent: 10, offers_required: 2, description_text: "Refer friends to earn more!" };
+    let settings = { 
+      bonus_coins: 1000, 
+      commission_percent: 10, 
+      offers_required: 2, 
+      description_text: "Refer friends to earn more!",
+      referee_signup_bonus: 0,
+      referrer_reward_coins: 10,
+      referral_condition_type: 'MIN_TASKS',
+      referral_condition_threshold: 2
+    };
 
     if (settingsRows.length === 0) {
       await pool.query(
         "INSERT INTO referral_settings (bonus_coins, commission_percent, offers_required, description_text) VALUES (1000, 10, 2, 'Refer friends to earn more!')"
       );
     } else {
+      const s = settingsRows[0];
       settings = {
-        bonus_coins: Math.round(parseFloat(settingsRows[0].bonus_coins)),
-        commission_percent: parseFloat(settingsRows[0].commission_percent),
-        offers_required: parseInt(settingsRows[0].offers_required),
-        description_text: settingsRows[0].description_text || "Refer friends to earn more!"
+        bonus_coins: Math.round(parseFloat(s.bonus_coins)),
+        commission_percent: parseFloat(s.commission_percent),
+        offers_required: parseInt(s.offers_required),
+        description_text: s.description_text || "Refer friends to earn more!",
+        referee_signup_bonus: parseFloat(s.referee_signup_bonus ?? 0),
+        referrer_reward_coins: parseFloat(s.referrer_reward_coins ?? s.bonus_coins ?? 10),
+        referral_condition_type: s.referral_condition_type || 'MIN_TASKS',
+        referral_condition_threshold: parseFloat(s.referral_condition_threshold ?? s.offers_required ?? 2)
       };
     }
 

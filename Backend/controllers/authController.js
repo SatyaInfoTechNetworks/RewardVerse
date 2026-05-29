@@ -300,17 +300,34 @@ async function handleReferralMapping(referredUserId, referrerCode) {
           referrer_id CHAR(36) NOT NULL,
           referred_user_id CHAR(36) NOT NULL,
           referral_code VARCHAR(50) NOT NULL,
-          status ENUM('PENDING', 'COMPLETED') DEFAULT 'PENDING',
+          status ENUM('PENDING', 'COMPLETED', 'REWARDED') DEFAULT 'PENDING',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE,
           FOREIGN KEY (referred_user_id) REFERENCES users(id) ON DELETE CASCADE
         )`
       );
 
+      // Fetch sign-up bonus for new referred user
+      const [settingsRows] = await pool.query('SELECT referee_signup_bonus FROM referral_settings LIMIT 1').catch(() => [[]]);
+      const signupBonus = (settingsRows && settingsRows.length > 0) ? parseFloat(settingsRows[0].referee_signup_bonus || 0) : 0;
+
       await pool.query(
         'INSERT INTO referral_uses (id, referrer_id, referred_user_id, referral_code) VALUES (?, ?, ?, ?)',
         [uuidv4(), referrerId, referredUserId, actualReferrerCode]
       );
+
+      if (signupBonus > 0) {
+        // Credit referee balance
+        await pool.query('UPDATE users SET balance = balance + ? WHERE id = ?', [signupBonus, referredUserId]);
+
+        // Log double-entry ledger credit transaction
+        const transId = uuidv4();
+        await pool.query(
+          `INSERT INTO transactions (id, user_id, amount, type, source, description, created_at) 
+           VALUES (?, ?, ?, 'CREDIT', 'REFERRAL_SIGNUP_BONUS', ?, NOW())`,
+          [transId, referredUserId, signupBonus, `Sign-up Referral Bonus (Used code: ${actualReferrerCode})`]
+        );
+      }
     }
   } catch (err) {
     console.error('Error in handleReferralMapping:', err.message);
