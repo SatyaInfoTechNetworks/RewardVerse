@@ -55,6 +55,31 @@ async function migrateColumnToVarcharIfNumeric(connection, tableName, columnName
   }
 }
 
+async function sweepLegacyColumnsForDefaults(connection, tableName) {
+  try {
+    const dbName = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
+    const [cols] = await connection.query(`
+      SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+        AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL AND COLUMN_KEY != 'PRI'
+        AND EXTRA NOT LIKE '%auto_increment%'
+    `, [dbName, tableName]);
+    
+    for (const col of cols) {
+      const dt = col.DATA_TYPE.toLowerCase();
+      let def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0' 
+        : (dt.includes('timestamp') || dt.includes('datetime') ? 'CURRENT_TIMESTAMP' : "''");
+      console.log(`  🔧 Setting default for legacy ${tableName} column [${col.COLUMN_NAME}] → DEFAULT ${def}`);
+      await connection.query(`ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NOT NULL DEFAULT ${def}`).catch(e => {
+        console.warn(`  ⚠️ Could not set default for ${tableName}.[${col.COLUMN_NAME}]:`, e.message);
+      });
+    }
+  } catch (error) {
+    console.error(`❌ Error sweeping defaults for ${tableName}:`, error);
+  }
+}
+
 export async function initializeDatabase() {
   console.log('🔄 Checking and initializing database tables...');
   let connection;
@@ -93,6 +118,9 @@ export async function initializeDatabase() {
     // Custom 10-char hexadecimal public user ID (safe to share, not Firebase UID)
     await addColumnIfNotExists(connection, 'users', 'user_id', 'VARCHAR(10) UNIQUE');
 
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in users
+    await sweepLegacyColumnsForDefaults(connection, 'users');
+
     // 2. offers Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS offers (
@@ -122,6 +150,9 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'offers', 'difficulty', 'VARCHAR(50) DEFAULT \'Medium\'');
     await addColumnIfNotExists(connection, 'offers', 'actual_price', 'DECIMAL(10, 2) DEFAULT 0.00');
 
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in offers
+    await sweepLegacyColumnsForDefaults(connection, 'offers');
+
     // 3. offer_tiers Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS offer_tiers (
@@ -139,6 +170,9 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'offer_tiers', 'tier_title', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'offer_tiers', 'app_tier_title', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'offer_tiers', 'status', 'VARCHAR(50) DEFAULT \'ACTIVE\'');
+
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in offer_tiers
+    await sweepLegacyColumnsForDefaults(connection, 'offer_tiers');
 
     // 4. user_offer_progress Table
     await connection.query(`
@@ -159,6 +193,9 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'user_offer_progress', 'user_input', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'user_offer_progress', 'admin_status', 'VARCHAR(50) DEFAULT \'PENDING\'');
     await addColumnIfNotExists(connection, 'user_offer_progress', 'admin_remark', 'TEXT NULL');
+
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in user_offer_progress
+    await sweepLegacyColumnsForDefaults(connection, 'user_offer_progress');
 
     // 5. transactions Table
     // Let's modify the ENUM values safely or use simple VARCHAR for source/type to be flexible.
@@ -181,6 +218,9 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'transactions', 'reference_id', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'transactions', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in transactions
+    await sweepLegacyColumnsForDefaults(connection, 'transactions');
+
     // 6. withdrawals Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS withdrawals (
@@ -200,6 +240,9 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'withdrawals', 'method_id', 'VARCHAR(100) NULL');
     await addColumnIfNotExists(connection, 'withdrawals', 'amount_coins', 'INT DEFAULT 0');
     await addColumnIfNotExists(connection, 'withdrawals', 'amount_currency', 'DECIMAL(10, 2) DEFAULT 0.00');
+
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in withdrawals
+    await sweepLegacyColumnsForDefaults(connection, 'withdrawals');
 
     // 6a. payout_methods Table
     await connection.query(`
@@ -235,23 +278,8 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'payout_methods', 'is_active', 'BOOLEAN DEFAULT TRUE');
     await addColumnIfNotExists(connection, 'payout_methods', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
-    try {
-      const dbName2 = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
-      const [legacyCols] = await connection.query(`
-        SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payout_methods'
-          AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL AND COLUMN_KEY != 'PRI'
-      `, [dbName2]);
-      for (const col of legacyCols) {
-        const dt = col.DATA_TYPE.toLowerCase();
-        let def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0' : (dt.includes('timestamp') || dt.includes('datetime') ? 'CURRENT_TIMESTAMP' : "''");
-        console.log(`  🔧 Setting default for legacy payout_methods column [${col.COLUMN_NAME}] → DEFAULT ${def}`);
-        await connection.query(`ALTER TABLE payout_methods MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NOT NULL DEFAULT ${def}`).catch(e => console.warn(`  ⚠️ Could not set default for [${col.COLUMN_NAME}]:`, e.message));
-      }
-    } catch (e) {
-      console.warn('⚠️ payout_methods legacy column defaults sweep note:', e.message);
-    };
+    // ⚠️ Auto-sweep all NOT NULL/no-default columns in payout_methods
+    await sweepLegacyColumnsForDefaults(connection, 'payout_methods');
 
     // 6b. payout_tiers Table
     await connection.query(`
@@ -300,26 +328,7 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'payout_tiers', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
     // ⚠️ Auto-sweep all NOT NULL/no-default columns in payout_tiers
-    try {
-      const dbNameT2 = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
-      const [tierCols] = await connection.query(`
-        SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payout_tiers'
-          AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL AND COLUMN_KEY != 'PRI'
-      `, [dbNameT2]);
-      for (const col of tierCols) {
-        const dt = col.DATA_TYPE.toLowerCase();
-        const def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0'
-          : (dt.includes('timestamp') || dt.includes('datetime') ? 'CURRENT_TIMESTAMP' : "''");
-        console.log(`  🔧 Setting default for legacy payout_tiers column [${col.COLUMN_NAME}] → DEFAULT ${def}`);
-        await connection.query(`ALTER TABLE payout_tiers MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NOT NULL DEFAULT ${def}`).catch(e =>
-          console.warn(`  ⚠️ Could not set default for payout_tiers.[${col.COLUMN_NAME}]:`, e.message)
-        );
-      }
-    } catch (e) {
-      console.warn('⚠️ payout_tiers legacy column defaults sweep note:', e.message);
-    }
+    await sweepLegacyColumnsForDefaults(connection, 'payout_tiers');
 
     // 7. app_configs Table
     await connection.query(`
