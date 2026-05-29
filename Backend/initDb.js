@@ -12,6 +12,49 @@ async function addColumnIfNotExists(connection, tableName, columnName, columnDef
   }
 }
 
+async function migrateColumnToVarcharIfNumeric(connection, tableName, columnName, size = 100) {
+  try {
+    const [rows] = await connection.query(`SHOW COLUMNS FROM \`${tableName}\` LIKE ?`, [columnName]);
+    if (rows.length > 0 && rows[0].Type) {
+      const type = rows[0].Type.toLowerCase();
+      if (type.includes('int') || type.includes('decimal') || type.includes('double') || type.includes('float')) {
+        console.log(`⚡ Legacy numeric column detected: [${tableName}.${columnName}] (${type}). Migrating to VARCHAR(${size})...`);
+        
+        if (rows[0].Extra && rows[0].Extra.toLowerCase().includes('auto_increment')) {
+          console.log(`  🔧 Removing AUTO_INCREMENT from [${tableName}.${columnName}]...`);
+          await connection.query(`ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${columnName}\` ${rows[0].Type} NOT NULL`).catch(err => {
+            console.warn(`  ⚠️ Warning during auto_increment removal:`, err.message);
+          });
+        }
+
+        const dbName = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
+        const [fkRows] = await connection.query(`
+          SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+          JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+            ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA
+          WHERE rc.REFERENCED_TABLE_NAME = ?
+            AND kcu.REFERENCED_COLUMN_NAME = ?
+            AND kcu.TABLE_SCHEMA = ?
+        `, [tableName, columnName, dbName]);
+
+        for (const fk of fkRows) {
+          console.log(`  🔧 Dropping FK [${fk.CONSTRAINT_NAME}] on [${fk.TABLE_NAME}.${fk.COLUMN_NAME}]...`);
+          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
+          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` MODIFY COLUMN \`${fk.COLUMN_NAME}\` VARCHAR(${size}) NOT NULL`).catch((e) => {
+            console.warn(`  ⚠️ Could not modify referencing column ${fk.TABLE_NAME}.${fk.COLUMN_NAME}:`, e.message);
+          });
+        }
+
+        await connection.query(`ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${columnName}\` VARCHAR(${size}) NOT NULL`);
+        console.log(`✅ [${tableName}.${columnName}] migrated to VARCHAR(${size}).`);
+      }
+    }
+  } catch (error) {
+    console.error(`❌ Error migrating [${tableName}.${columnName}] to VARCHAR:`, error);
+  }
+}
+
 export async function initializeDatabase() {
   console.log('🔄 Checking and initializing database tables...');
   let connection;
@@ -63,6 +106,7 @@ export async function initializeDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    await migrateColumnToVarcharIfNumeric(connection, 'offers', 'id', 100);
 
     // Add extra offer columns for new features
     await addColumnIfNotExists(connection, 'offers', 'likes_count', 'INT DEFAULT 0');
@@ -90,6 +134,7 @@ export async function initializeDatabase() {
         FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    await migrateColumnToVarcharIfNumeric(connection, 'offer_tiers', 'id', 100);
 
     await addColumnIfNotExists(connection, 'offer_tiers', 'tier_title', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'offer_tiers', 'app_tier_title', 'VARCHAR(255) NULL');
@@ -109,6 +154,7 @@ export async function initializeDatabase() {
         FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    await migrateColumnToVarcharIfNumeric(connection, 'user_offer_progress', 'id', 100);
     await addColumnIfNotExists(connection, 'user_offer_progress', 'click_id', 'VARCHAR(255) UNIQUE NULL');
     await addColumnIfNotExists(connection, 'user_offer_progress', 'user_input', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'user_offer_progress', 'admin_status', 'VARCHAR(50) DEFAULT \'PENDING\'');
@@ -129,6 +175,7 @@ export async function initializeDatabase() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    await migrateColumnToVarcharIfNumeric(connection, 'transactions', 'id', 100);
     await addColumnIfNotExists(connection, 'transactions', 'description', 'TEXT NULL');
     // ⚠️ Legacy tables may not have these columns — ensure they exist
     await addColumnIfNotExists(connection, 'transactions', 'reference_id', 'VARCHAR(255) NULL');
@@ -147,6 +194,7 @@ export async function initializeDatabase() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    await migrateColumnToVarcharIfNumeric(connection, 'withdrawals', 'id', 100);
 
     // Dynamically expand withdrawals table if missing columns from legacy PHP
     await addColumnIfNotExists(connection, 'withdrawals', 'method_id', 'VARCHAR(100) NULL');
@@ -172,33 +220,8 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    try {
-      const [idColInfo] = await connection.query(`SHOW COLUMNS FROM payout_methods LIKE 'id'`);
-      if (idColInfo.length > 0 && idColInfo[0].Type && !idColInfo[0].Type.toLowerCase().includes('varchar')) {
-        console.log('⚡ Comprehensive migration of payout_methods started...');
-
-        const dbName = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
-        const [fkRows] = await connection.query(`
-          SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME
-          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
-          JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
-            ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA
-          WHERE rc.REFERENCED_TABLE_NAME = 'payout_methods'
-            AND kcu.REFERENCED_COLUMN_NAME = 'id'
-            AND kcu.TABLE_SCHEMA = ?
-        `, [dbName]);
-
-        for (const fk of fkRows) {
-          console.log(`  🔧 Dropping FK [${fk.CONSTRAINT_NAME}] on [${fk.TABLE_NAME}.${fk.COLUMN_NAME}]...`);
-          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
-          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` MODIFY COLUMN \`${fk.COLUMN_NAME}\` VARCHAR(100) NOT NULL`).catch((e) => console.warn(`  ⚠️ Could not modify ${fk.TABLE_NAME}.${fk.COLUMN_NAME}:`, e.message));
-        }
-
-        await connection.query(`ALTER TABLE payout_methods MODIFY COLUMN id VARCHAR(100) NOT NULL`);
-      }
-    } catch (e) {
-      console.warn('⚠️ payout_methods id column migration note:', e.message);
-    }
+    // ⚠️ Legacy PHP payout_methods.id may be INT — migrate to VARCHAR(100)
+    await migrateColumnToVarcharIfNumeric(connection, 'payout_methods', 'id', 100);
 
     await addColumnIfNotExists(connection, 'payout_methods', 'description', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'payout_methods', 'icon_url', 'TEXT NULL');
@@ -244,16 +267,7 @@ export async function initializeDatabase() {
     `);
 
     // ⚠️ Legacy PHP payout_tiers.id may be INT — migrate to VARCHAR(100)
-    try {
-      const [tierIdCol] = await connection.query(`SHOW COLUMNS FROM payout_tiers LIKE 'id'`);
-      if (tierIdCol.length > 0 && tierIdCol[0].Type && !tierIdCol[0].Type.toLowerCase().includes('varchar')) {
-        console.log('⚡ Migrating payout_tiers.id from INT to VARCHAR(100)...');
-        await connection.query(`ALTER TABLE payout_tiers MODIFY COLUMN id VARCHAR(100) NOT NULL`);
-        console.log('✅ payout_tiers.id migrated to VARCHAR(100).');
-      }
-    } catch (e) {
-      console.warn('⚠️ payout_tiers id migration note:', e.message);
-    }
+    await migrateColumnToVarcharIfNumeric(connection, 'payout_tiers', 'id', 100);
 
     // ⚠️ Legacy PHP payout_tiers uses 'payout_method_id' instead of 'method_id' — rename it
     try {
