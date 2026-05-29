@@ -243,6 +243,18 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // ⚠️ Legacy PHP payout_tiers.id may be INT — migrate to VARCHAR(100)
+    try {
+      const [tierIdCol] = await connection.query(`SHOW COLUMNS FROM payout_tiers LIKE 'id'`);
+      if (tierIdCol.length > 0 && tierIdCol[0].Type && !tierIdCol[0].Type.toLowerCase().includes('varchar')) {
+        console.log('⚡ Migrating payout_tiers.id from INT to VARCHAR(100)...');
+        await connection.query(`ALTER TABLE payout_tiers MODIFY COLUMN id VARCHAR(100) NOT NULL`);
+        console.log('✅ payout_tiers.id migrated to VARCHAR(100).');
+      }
+    } catch (e) {
+      console.warn('⚠️ payout_tiers id migration note:', e.message);
+    }
+
     // ⚠️ Legacy PHP payout_tiers uses 'payout_method_id' instead of 'method_id' — rename it
     try {
       const [pmCol] = await connection.query(`SHOW COLUMNS FROM payout_tiers LIKE 'payout_method_id'`);
