@@ -177,10 +177,30 @@ export async function initializeDatabase() {
       const [idColInfo] = await connection.query(`SHOW COLUMNS FROM payout_methods LIKE 'id'`);
       if (idColInfo.length > 0 && idColInfo[0].Type && !idColInfo[0].Type.toLowerCase().includes('varchar')) {
         console.log('⚡ Migrating payout_methods.id from INT to VARCHAR(100)...');
-        // Drop FK on payout_tiers first, change id, then re-add FK
-        await connection.query('ALTER TABLE payout_tiers DROP FOREIGN KEY IF EXISTS payout_tiers_ibfk_1').catch(() => {});
+
+        // Step 1: Find ALL foreign keys in ALL tables that reference payout_methods.id
+        const dbName = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
+        const [fkRows] = await connection.query(`
+          SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME
+          FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+          JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+            ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA
+          WHERE rc.REFERENCED_TABLE_NAME = 'payout_methods'
+            AND kcu.REFERENCED_COLUMN_NAME = 'id'
+            AND kcu.TABLE_SCHEMA = ?
+        `, [dbName]);
+
+        // Step 2: Drop every FK constraint and update each referencing column to VARCHAR(100)
+        for (const fk of fkRows) {
+          console.log(`  🔧 Dropping FK [${fk.CONSTRAINT_NAME}] on [${fk.TABLE_NAME}.${fk.COLUMN_NAME}]...`);
+          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
+          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` MODIFY COLUMN \`${fk.COLUMN_NAME}\` VARCHAR(100) NOT NULL`).catch((e) => {
+            console.warn(`  ⚠️ Could not modify ${fk.TABLE_NAME}.${fk.COLUMN_NAME}:`, e.message);
+          });
+        }
+
+        // Step 3: Now safely change the primary key column type
         await connection.query(`ALTER TABLE payout_methods MODIFY COLUMN id VARCHAR(100) NOT NULL`);
-        await connection.query(`ALTER TABLE payout_tiers MODIFY COLUMN method_id VARCHAR(100) NOT NULL`);
         console.log('✅ payout_methods.id migrated to VARCHAR(100).');
       }
     } catch (e) {
