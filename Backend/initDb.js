@@ -172,6 +172,19 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // ⚠️ Legacy payout_methods table may be missing columns added in newer schema versions — ensure they exist
+    await addColumnIfNotExists(connection, 'payout_methods', 'description', 'TEXT NULL');
+    await addColumnIfNotExists(connection, 'payout_methods', 'icon_url', 'TEXT NULL');
+    await addColumnIfNotExists(connection, 'payout_methods', 'min_coins', 'INT DEFAULT 0');
+    await addColumnIfNotExists(connection, 'payout_methods', 'conversion_rate', 'DECIMAL(10, 4) DEFAULT 0.0000');
+    await addColumnIfNotExists(connection, 'payout_methods', 'currency_symbol', "VARCHAR(10) DEFAULT '₹'");
+    await addColumnIfNotExists(connection, 'payout_methods', 'processing_time', 'VARCHAR(100) NULL');
+    await addColumnIfNotExists(connection, 'payout_methods', 'input_type', "VARCHAR(50) DEFAULT 'text'");
+    await addColumnIfNotExists(connection, 'payout_methods', 'input_label', 'VARCHAR(100) NULL');
+    await addColumnIfNotExists(connection, 'payout_methods', 'input_placeholder', 'VARCHAR(255) NULL');
+    await addColumnIfNotExists(connection, 'payout_methods', 'is_active', 'BOOLEAN DEFAULT TRUE');
+    await addColumnIfNotExists(connection, 'payout_methods', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+
     // 6b. payout_tiers Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS payout_tiers (
