@@ -219,6 +219,10 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'payout_methods', 'input_placeholder', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'payout_methods', 'is_active', 'BOOLEAN DEFAULT TRUE');
     await addColumnIfNotExists(connection, 'payout_methods', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+    // ⚠️ Legacy PHP payout_methods may have an 'active' column (NOT NULL, no default) — give it a default
+    try {
+      await connection.query('ALTER TABLE payout_methods MODIFY COLUMN active TINYINT(1) NOT NULL DEFAULT 1');
+    } catch (e) { /* column doesn't exist on new schema — safe to ignore */ }
 
     // 6b. payout_tiers Table
     await connection.query(`
