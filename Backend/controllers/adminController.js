@@ -8,6 +8,10 @@ import { recordLedgerTransaction } from '../utils/ledger.js';
 // ==========================================
 async function logAdminAction(connection, { adminId, actionType, targetId = null, payload = null, req = null }) {
   try {
+    let parsedAdminId = parseInt(adminId);
+    if (isNaN(parsedAdminId)) {
+      parsedAdminId = 0; // Default system admin ID
+    }
     const ipAddress = req ? (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1') : '127.0.0.1';
     const userAgent = req ? req.headers['user-agent'] : null;
     const payloadStr = payload ? JSON.stringify(payload) : null;
@@ -15,7 +19,7 @@ async function logAdminAction(connection, { adminId, actionType, targetId = null
     await connection.query(
       `INSERT INTO admin_audit_logs (id, admin_id, action_type, target_id, payload, ip_address, user_agent, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [logId, adminId, actionType, targetId, payloadStr, ipAddress, userAgent]
+      [logId, parsedAdminId, actionType, targetId, payloadStr, ipAddress, userAgent]
     );
   } catch (err) {
     console.error('❌ Failed to log admin action:', err);
