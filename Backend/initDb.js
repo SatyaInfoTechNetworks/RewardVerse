@@ -220,7 +220,7 @@ export async function initializeDatabase() {
     // 10. banners Table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS banners (
-        id CHAR(36) PRIMARY KEY,
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
         title VARCHAR(255) NULL,
         description TEXT NULL,
         image_url TEXT NOT NULL,

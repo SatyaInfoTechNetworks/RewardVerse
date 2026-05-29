@@ -807,12 +807,11 @@ export const createBanner = async (req, res) => {
     const { title, description, image_url, action_url, display_order, is_active } = req.body;
     if (!image_url) return res.status(400).json({ success: false, message: 'Image URL is required' });
 
-    const id = uuidv4();
-    await pool.query(
-      `INSERT INTO banners (id, title, description, image_url, action_url, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [id, title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), is_active !== false ? 1 : 0]
+    const [result] = await pool.query(
+      `INSERT INTO banners (title, description, image_url, action_url, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), is_active !== false ? 1 : 0]
     );
-    res.json({ success: true, message: 'Banner created', id });
+    res.json({ success: true, message: 'Banner created', id: result.insertId });
   } catch (error) {
     console.error('Create Banner Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
