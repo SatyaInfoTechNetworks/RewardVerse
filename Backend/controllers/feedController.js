@@ -5,13 +5,25 @@ import pool from '../db.js';
 // ----------------------------------------------------
 export const listBanners = async (req, res) => {
   try {
-    const query = `
-      SELECT id, image_url, action_url 
-      FROM banners 
-      WHERE is_active = 1 
-      ORDER BY display_order ASC, created_at DESC
-    `;
-    const [rows] = await pool.query(query);
+    let rows;
+    try {
+      // Try modern schema with is_active column
+      [rows] = await pool.query(`
+        SELECT id, image_url, action_url 
+        FROM banners 
+        WHERE is_active = 1 
+        ORDER BY display_order ASC, created_at DESC
+      `);
+    } catch (queryErr) {
+      // Fallback: legacy PHP schema uses 'active' column
+      console.warn('listBanners: falling back to legacy active column:', queryErr.message);
+      [rows] = await pool.query(`
+        SELECT id, image_url, action_url 
+        FROM banners 
+        WHERE active = 1 
+        ORDER BY display_order ASC, created_at DESC
+      `);
+    }
 
     const banners = rows.map(row => ({
       id: String(row.id),

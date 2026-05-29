@@ -237,6 +237,14 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'banners', 'is_active', 'BOOLEAN DEFAULT TRUE');
     // ⚠️ Legacy banners table may not have created_at — ensure it exists
     await addColumnIfNotExists(connection, 'banners', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+    // ⚠️ Legacy PHP banners table may have 'active' column without a default — fix it
+    try {
+      await connection.query("ALTER TABLE banners MODIFY COLUMN active TINYINT(1) NOT NULL DEFAULT 1");
+    } catch (e) { /* column doesn't exist, safe to ignore */ }
+    // Ensure is_active exists and has correct type
+    try {
+      await connection.query("ALTER TABLE banners MODIFY COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1");
+    } catch (e) { /* safe to ignore */ }
 
     // 11. lifafas Table
     await connection.query(`

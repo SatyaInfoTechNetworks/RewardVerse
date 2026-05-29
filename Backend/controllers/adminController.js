@@ -807,10 +807,25 @@ export const createBanner = async (req, res) => {
     const { title, description, image_url, action_url, display_order, is_active } = req.body;
     if (!image_url) return res.status(400).json({ success: false, message: 'Image URL is required' });
 
-    const [result] = await pool.query(
-      `INSERT INTO banners (title, description, image_url, action_url, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), is_active !== false ? 1 : 0]
-    );
+    const activeValue = is_active !== false ? 1 : 0;
+    let result;
+    try {
+      // Try modern schema first (is_active column)
+      [result] = await pool.query(
+        `INSERT INTO banners (title, description, image_url, action_url, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), activeValue]
+      );
+    } catch (insertErr) {
+      if (insertErr.code === 'ER_BAD_FIELD_ERROR' || insertErr.errno === 1054) {
+        // Legacy DB: try with 'active' column instead
+        [result] = await pool.query(
+          `INSERT INTO banners (title, description, image_url, action_url, display_order, active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+          [title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), activeValue]
+        );
+      } else {
+        throw insertErr;
+      }
+    }
     res.json({ success: true, message: 'Banner created', id: result.insertId });
   } catch (error) {
     console.error('Create Banner Error:', error);

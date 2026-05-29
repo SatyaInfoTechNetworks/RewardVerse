@@ -568,16 +568,33 @@ export const requestWithdrawal = async (req, res) => {
 export const getTransactions = async (req, res) => {
   try {
     const userId = req.user.id;
-    const [rows] = await pool.query(
-      `SELECT t.id, t.user_id, t.amount, t.type, t.source, t.reference_id, t.description, t.created_at,
-              o.icon_url as offer_icon
-       FROM transactions t
-       LEFT JOIN user_offer_progress uop ON (t.reference_id COLLATE utf8mb4_unicode_ci) = uop.click_id AND t.source = 'OFFER'
-       LEFT JOIN offers o ON uop.offer_id = o.id
-       WHERE t.user_id = ? 
-       ORDER BY t.created_at DESC`,
-      [userId]
-    );
+    let rows;
+    // Try full query with reference_id JOIN first; fallback to simpler query for legacy DBs
+    try {
+      [rows] = await pool.query(
+        `SELECT t.id, t.user_id, t.amount, t.type, t.source,
+                IFNULL(t.reference_id, '') as reference_id, t.description, t.created_at,
+                o.icon_url as offer_icon
+         FROM transactions t
+         LEFT JOIN user_offer_progress uop ON (t.reference_id COLLATE utf8mb4_unicode_ci) = uop.click_id AND t.source = 'OFFER'
+         LEFT JOIN offers o ON uop.offer_id = o.id
+         WHERE t.user_id = ?
+         ORDER BY t.created_at DESC`,
+        [userId]
+      );
+    } catch (queryErr) {
+      // Fallback for legacy DB tables missing reference_id column
+      console.warn('getTransactions: falling back to simple query due to:', queryErr.message);
+      [rows] = await pool.query(
+        `SELECT t.id, t.user_id, t.amount, t.type, t.source,
+                '' as reference_id, t.description, t.created_at,
+                NULL as offer_icon
+         FROM transactions t
+         WHERE t.user_id = ?
+         ORDER BY t.created_at DESC`,
+        [userId]
+      );
+    }
 
     // Fetch dynamic icons config from DB
     const [configRows] = await pool.query("SELECT config_value FROM app_configs WHERE config_key = 'earning_icons' LIMIT 1").catch(() => [[]]);
