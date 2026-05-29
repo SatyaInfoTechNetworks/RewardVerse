@@ -130,6 +130,9 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
     await addColumnIfNotExists(connection, 'transactions', 'description', 'TEXT NULL');
+    // ⚠️ Legacy tables may not have these columns — ensure they exist
+    await addColumnIfNotExists(connection, 'transactions', 'reference_id', 'VARCHAR(255) NULL');
+    await addColumnIfNotExists(connection, 'transactions', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
     // 6. withdrawals Table
     await connection.query(`
@@ -232,6 +235,8 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'banners', 'action_url', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'banners', 'display_order', 'INT DEFAULT 0');
     await addColumnIfNotExists(connection, 'banners', 'is_active', 'BOOLEAN DEFAULT TRUE');
+    // ⚠️ Legacy banners table may not have created_at — ensure it exists
+    await addColumnIfNotExists(connection, 'banners', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
     // 11. lifafas Table
     await connection.query(`
@@ -574,6 +579,15 @@ export async function initializeDatabase() {
       await connection.query('UPDATE users SET profile_pic = photo_url WHERE (profile_pic IS NULL OR profile_pic = "") AND photo_url IS NOT NULL AND photo_url != ""');
     } catch (migErr) {
       console.log('⚠️ Legacy profile_pic migration note:', migErr.message);
+    }
+
+    // Migrate legacy transaction_id → reference_id for old PHP records
+    try {
+      await connection.query(
+        'UPDATE transactions SET reference_id = transaction_id WHERE (reference_id IS NULL OR reference_id = "") AND transaction_id IS NOT NULL AND transaction_id != ""'
+      );
+    } catch (txMigErr) {
+      console.log('⚠️ Legacy transaction_id migration note (safe to ignore if column does not exist):', txMigErr.message);
     }
 
     console.log('✅ All database tables checked/created successfully.');
