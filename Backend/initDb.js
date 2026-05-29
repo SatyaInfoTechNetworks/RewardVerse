@@ -172,13 +172,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // ⚠️ Legacy payout_methods table may have id as INT (from old PHP schema) — migrate to VARCHAR(100)
     try {
       const [idColInfo] = await connection.query(`SHOW COLUMNS FROM payout_methods LIKE 'id'`);
       if (idColInfo.length > 0 && idColInfo[0].Type && !idColInfo[0].Type.toLowerCase().includes('varchar')) {
-        console.log('⚡ Migrating payout_methods.id from INT to VARCHAR(100)...');
+        console.log('⚡ Comprehensive migration of payout_methods started...');
 
-        // Step 1: Find ALL foreign keys in ALL tables that reference payout_methods.id
         const dbName = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
         const [fkRows] = await connection.query(`
           SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME
@@ -190,24 +188,18 @@ export async function initializeDatabase() {
             AND kcu.TABLE_SCHEMA = ?
         `, [dbName]);
 
-        // Step 2: Drop every FK constraint and update each referencing column to VARCHAR(100)
         for (const fk of fkRows) {
           console.log(`  🔧 Dropping FK [${fk.CONSTRAINT_NAME}] on [${fk.TABLE_NAME}.${fk.COLUMN_NAME}]...`);
           await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
-          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` MODIFY COLUMN \`${fk.COLUMN_NAME}\` VARCHAR(100) NOT NULL`).catch((e) => {
-            console.warn(`  ⚠️ Could not modify ${fk.TABLE_NAME}.${fk.COLUMN_NAME}:`, e.message);
-          });
+          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` MODIFY COLUMN \`${fk.COLUMN_NAME}\` VARCHAR(100) NOT NULL`).catch((e) => console.warn(`  ⚠️ Could not modify ${fk.TABLE_NAME}.${fk.COLUMN_NAME}:`, e.message));
         }
 
-        // Step 3: Now safely change the primary key column type
         await connection.query(`ALTER TABLE payout_methods MODIFY COLUMN id VARCHAR(100) NOT NULL`);
-        console.log('✅ payout_methods.id migrated to VARCHAR(100).');
       }
     } catch (e) {
       console.warn('⚠️ payout_methods id column migration note:', e.message);
     }
 
-    // ⚠️ Legacy payout_methods table may be missing columns added in newer schema versions — ensure they exist
     await addColumnIfNotExists(connection, 'payout_methods', 'description', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'payout_methods', 'icon_url', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'payout_methods', 'min_coins', 'INT DEFAULT 0');
@@ -219,10 +211,24 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'payout_methods', 'input_placeholder', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'payout_methods', 'is_active', 'BOOLEAN DEFAULT TRUE');
     await addColumnIfNotExists(connection, 'payout_methods', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
-    // ⚠️ Legacy PHP payout_methods may have an 'active' column (NOT NULL, no default) — give it a default
+
     try {
-      await connection.query('ALTER TABLE payout_methods MODIFY COLUMN active TINYINT(1) NOT NULL DEFAULT 1');
-    } catch (e) { /* column doesn't exist on new schema — safe to ignore */ }
+      const dbName2 = (await connection.query('SELECT DATABASE() as db'))[0][0].db;
+      const [legacyCols] = await connection.query(`
+        SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payout_methods'
+          AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL AND COLUMN_KEY != 'PRI'
+      `, [dbName2]);
+      for (const col of legacyCols) {
+        const dt = col.DATA_TYPE.toLowerCase();
+        let def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0' : (dt.includes('timestamp') || dt.includes('datetime') ? 'CURRENT_TIMESTAMP' : "''");
+        console.log(`  🔧 Setting default for legacy payout_methods column [${col.COLUMN_NAME}] → DEFAULT ${def}`);
+        await connection.query(`ALTER TABLE payout_methods MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NOT NULL DEFAULT ${def}`).catch(e => console.warn(`  ⚠️ Could not set default for [${col.COLUMN_NAME}]:`, e.message));
+      }
+    } catch (e) {
+      console.warn('⚠️ payout_methods legacy column defaults sweep note:', e.message);
+    };
 
     // 6b. payout_tiers Table
     await connection.query(`
