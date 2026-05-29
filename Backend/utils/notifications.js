@@ -12,11 +12,19 @@ const serviceAccountPath = process.env.FCM_SERVICE_ACCOUNT_PATH || './config/ser
 
 try {
   if (process.env.FCM_SERVICE_ACCOUNT_JSON) {
-    const serviceAccount = JSON.parse(process.env.FCM_SERVICE_ACCOUNT_JSON);
+    let envJson = process.env.FCM_SERVICE_ACCOUNT_JSON.trim();
+    // Strip surrounding quotes if added by environment managers
+    if ((envJson.startsWith('"') && envJson.endsWith('"')) || (envJson.startsWith("'") && envJson.endsWith("'"))) {
+      envJson = envJson.substring(1, envJson.length - 1);
+    }
+    // Handle double-escaped newlines robustly
+    envJson = envJson.replace(/\\n/g, '\n');
+
+    const serviceAccount = JSON.parse(envJson);
     firebaseApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
-    console.log('✅ Firebase Admin SDK initialized successfully from env variable.');
+    console.log('✅ Firebase Admin SDK initialized successfully from FCM_SERVICE_ACCOUNT_JSON env variable.');
   } else {
     let resolvedPath = null;
     const pathsToCheck = [
