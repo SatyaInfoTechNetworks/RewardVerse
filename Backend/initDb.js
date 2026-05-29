@@ -46,6 +46,7 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'users', 'is_banned', 'BOOLEAN DEFAULT FALSE');
     await addColumnIfNotExists(connection, 'users', 'ban_reason', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'users', 'android_id', 'VARCHAR(255) NULL');
+    await addColumnIfNotExists(connection, 'users', 'profile_pic', 'TEXT NULL');
     // Custom 10-char hexadecimal public user ID (safe to share, not Firebase UID)
     await addColumnIfNotExists(connection, 'users', 'user_id', 'VARCHAR(10) UNIQUE');
 
@@ -228,6 +229,9 @@ export async function initializeDatabase() {
     `);
     await addColumnIfNotExists(connection, 'banners', 'title', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'banners', 'description', 'TEXT NULL');
+    await addColumnIfNotExists(connection, 'banners', 'action_url', 'TEXT NULL');
+    await addColumnIfNotExists(connection, 'banners', 'display_order', 'INT DEFAULT 0');
+    await addColumnIfNotExists(connection, 'banners', 'is_active', 'BOOLEAN DEFAULT TRUE');
 
     // 11. lifafas Table
     await connection.query(`
@@ -563,6 +567,13 @@ export async function initializeDatabase() {
       await connection.query('CREATE INDEX idx_offer_active_hot ON offers (is_active, is_hot)').catch(() => {});
     } catch (idxErr) {
       console.log('⚠️ Index creation info:', idxErr.message);
+    }
+
+    // Migrate legacy profile pic data
+    try {
+      await connection.query('UPDATE users SET profile_pic = photo_url WHERE (profile_pic IS NULL OR profile_pic = "") AND photo_url IS NOT NULL AND photo_url != ""');
+    } catch (migErr) {
+      console.log('⚠️ Legacy profile_pic migration note:', migErr.message);
     }
 
     console.log('✅ All database tables checked/created successfully.');

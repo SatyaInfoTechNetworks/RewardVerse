@@ -368,6 +368,24 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' }); 
     }
 
+    const ignoreErrorQuery = async (queryStr, params) => {
+      try { await connection.query(queryStr, params); } catch (e) {}
+    };
+
+    await ignoreErrorQuery('DELETE FROM user_spin_stats WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM user_streak_stats WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM user_data_entry_stats WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM streaks WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM lucky_spins WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM lifafa_claims WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM telegram_verification WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM contest_entries WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM contest_participants WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM contest_winners WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM offer_completions WHERE user_id = ?', [userId]);
+    await ignoreErrorQuery('DELETE FROM user_visit_progress WHERE user_id = ?', [userId]);
+
     await connection.query('DELETE FROM transactions WHERE user_id = ?', [userId]);
     await connection.query('DELETE FROM withdrawals WHERE user_id = ?', [userId]);
     await connection.query('DELETE FROM user_offer_progress WHERE user_id = ?', [userId]);
@@ -672,6 +690,24 @@ export const approveErasureRequest = async (req, res) => {
     }
 
     if (userId) {
+      const ignoreErrorQuery = async (queryStr, params) => {
+        try { await connection.query(queryStr, params); } catch (e) {}
+      };
+
+      await ignoreErrorQuery('DELETE FROM user_spin_stats WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM user_streak_stats WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM user_data_entry_stats WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM streaks WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM lucky_spins WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM lifafa_claims WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM telegram_verification WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM contest_entries WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM contest_participants WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM contest_winners WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM offer_completions WHERE user_id = ?', [userId]);
+      await ignoreErrorQuery('DELETE FROM user_visit_progress WHERE user_id = ?', [userId]);
+
       await connection.query('DELETE FROM transactions WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM withdrawals WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM user_offer_progress WHERE user_id = ?', [userId]);
