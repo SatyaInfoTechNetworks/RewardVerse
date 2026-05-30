@@ -302,85 +302,214 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* =========================================================================
-   ADMIN PORTAL THEME OVERRIDES (LIGHT CONTRAST & READABILITY ENHANCEMENTS)
+   ADMIN PORTAL THEME OVERRIDES (STRICT NATIVE ADMINLTE 3 / BOOTSTRAP 4 STYLE)
    ========================================================================= */
-body.hold-transition.sidebar-mini {
-  background-color: #f4f6f9 !important;
-  color: #333333 !important;
+
+/* 1. Global Font and Typography Overrides */
+body.hold-transition.sidebar-mini,
+body.hold-transition.sidebar-mini * {
+  font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  letter-spacing: normal !important;
 }
 
+body.hold-transition.sidebar-mini {
+  background-color: #f4f6f9 !important;
+  color: #212529 !important;
+}
+
+/* 2. Heading Color & Font Alignment */
 body.hold-transition.sidebar-mini h1,
 body.hold-transition.sidebar-mini h2,
 body.hold-transition.sidebar-mini h3,
 body.hold-transition.sidebar-mini h4,
 body.hold-transition.sidebar-mini h5,
 body.hold-transition.sidebar-mini h6 {
-  color: #1a1a24 !important; /* Elegant dark navy-charcoal for headings */
-}
-
-body.hold-transition.sidebar-mini .form-label {
-  color: #4a5568 !important; /* Clearly readable slate grey for labels */
+  color: #343a40 !important;
   font-weight: 600 !important;
 }
 
-body.hold-transition.sidebar-mini .glass-panel {
-  background: #ffffff !important; /* Clean premium white panel backdrop */
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  color: #2d3748 !important;
+/* 3. Form Labels */
+body.hold-transition.sidebar-mini .form-label {
+  color: #495057 !important;
+  font-weight: 700 !important;
+  font-size: 0.875rem !important;
 }
 
+/* 4. Strict Border Radius & Border Normalization (No Pills, No Roundness) */
+body.hold-transition.sidebar-mini .btn,
+body.hold-transition.sidebar-mini .btn-group,
+body.hold-transition.sidebar-mini .form-control,
+body.hold-transition.sidebar-mini .card,
+body.hold-transition.sidebar-mini .info-box,
+body.hold-transition.sidebar-mini .small-box,
+body.hold-transition.sidebar-mini .modal-content,
+body.hold-transition.sidebar-mini .alert,
+body.hold-transition.sidebar-mini .badge,
+body.hold-transition.sidebar-mini .rounded,
+body.hold-transition.sidebar-mini .rounded-lg,
+body.hold-transition.sidebar-mini .rounded-pill,
+body.hold-transition.sidebar-mini [class*="rounded-"],
+body.hold-transition.sidebar-mini [style*="border-radius"],
+body.hold-transition.sidebar-mini [style*="borderRadius"] {
+  border-radius: 0.25rem !important; /* Standard Bootstrap 4 / AdminLTE 3 border radius */
+}
+
+/* 5. Custom Glass Panels -> Standard AdminLTE Cards */
+body.hold-transition.sidebar-mini .glass-panel {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.125) !important;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.125), 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: #212529 !important;
+  padding: 20px !important;
+}
+
+body.hold-transition.sidebar-mini .glass-panel-interactive:hover {
+  transform: none !important;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.125), 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  border-color: rgba(0, 0, 0, 0.125) !important;
+  background: #ffffff !important;
+}
+
+/* 6. Custom Glass Inputs -> Standard Form Controls */
 body.hold-transition.sidebar-mini .glass-input {
-  background: #f8fafc !important; /* Soft light slate background */
-  border: 1px solid #cbd5e1 !important; /* Solid visible border */
-  color: #1e293b !important; /* Crisp charcoal text */
-  border-radius: 8px !important;
-  transition: all 0.2s ease !important;
+  background-color: #ffffff !important;
+  border: 1px solid #ced4da !important;
+  color: #495057 !important;
+  font-size: 1rem !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  height: calc(2.25rem + 2px) !important;
+  padding: 0.375rem 0.75rem !important;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.075) !important;
+  transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out !important;
 }
 
 body.hold-transition.sidebar-mini .glass-input:focus {
-  background: #ffffff !important;
-  border-color: var(--primary) !important;
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15) !important;
-  color: #1e293b !important;
+  background-color: #ffffff !important;
+  border-color: #80bdff !important;
+  outline: 0 !important;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 0 0.2rem rgba(0,123,255,.25) !important;
+  color: #495057 !important;
 }
 
 body.hold-transition.sidebar-mini .glass-input::placeholder {
-  color: #94a3b8 !important; /* High contrast placeholder text */
-  opacity: 1 !important;
+  color: #6c757d !important;
+  opacity: 0.8 !important;
 }
 
 body.hold-transition.sidebar-mini select.glass-input {
-  background-color: #f8fafc !important;
-  color: #1e293b !important;
+  background-color: #ffffff !important;
+  color: #495057 !important;
+  padding-right: 1.75rem !important;
+}
+
+/* 7. Buttons Normalization (Remove Pill/Round/Shadow) */
+body.hold-transition.sidebar-mini .btn-primary {
+  background: #007bff !important;
+  border-color: #007bff !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.hold-transition.sidebar-mini .btn-primary:hover {
+  background: #0069d9 !important;
+  border-color: #0062cc !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 
 body.hold-transition.sidebar-mini .btn-secondary {
-  background: #e2e8f0 !important;
-  border: 1px solid #cbd5e1 !important;
-  color: #475569 !important;
+  background-color: #6c757d !important;
+  border-color: #6c757d !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 body.hold-transition.sidebar-mini .btn-secondary:hover {
-  background: #cbd5e1 !important;
-  color: #1e293b !important;
+  background-color: #5a6268 !important;
+  border-color: #545b62 !important;
+  color: #ffffff !important;
+  transform: none !important;
+}
+
+body.hold-transition.sidebar-mini .btn-success {
+  background-color: #28a745 !important;
+  border-color: #28a745 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.hold-transition.sidebar-mini .btn-success:hover {
+  background-color: #218838 !important;
+  border-color: #1e7e34 !important;
+  color: #ffffff !important;
+}
+
+body.hold-transition.sidebar-mini .btn-danger {
+  background-color: #dc3545 !important;
+  border-color: #dc3545 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.hold-transition.sidebar-mini .btn-danger:hover {
+  background-color: #c82333 !important;
+  border-color: #bd2130 !important;
+  color: #ffffff !important;
+  transform: none !important;
+}
+
+/* 8. Table Normalization */
+body.hold-transition.sidebar-mini .glass-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  background-color: transparent !important;
 }
 
 body.hold-transition.sidebar-mini .glass-table th {
-  color: #475569 !important;
-  border-bottom: 2px solid #e2e8f0 !important;
+  color: #495057 !important;
+  border-bottom: 2px solid #dee2e6 !important;
   font-weight: 700 !important;
+  background-color: #f4f6f9 !important;
+  padding: 12px !important;
 }
 
 body.hold-transition.sidebar-mini .glass-table td {
-  color: #1e293b !important;
-  border-bottom: 1px solid #e2e8f0 !important;
+  color: #212529 !important;
+  border-bottom: 1px solid #dee2e6 !important;
+  padding: 12px !important;
+  background-color: #ffffff !important;
 }
 
 body.hold-transition.sidebar-mini .glass-table tr:hover td {
-  background: rgba(168, 85, 247, 0.04) !important;
+  background-color: #f8f9fa !important;
 }
+
+/* 9. Small Box & Widgets border-radius override */
+body.hold-transition.sidebar-mini .small-box,
+body.hold-transition.sidebar-mini .info-box {
+  box-shadow: 0 0 1px rgba(0,0,0,.125), 0 1px 3px rgba(0,0,0,.2) !important;
+  border: 0 !important;
+}
+
+/* 10. Modal Backdrop and Content Standardizations */
+body.hold-transition.sidebar-mini .modal-content {
+  border: 1px solid rgba(0,0,0,.2) !important;
+  box-shadow: 0 0.5rem 1rem rgba(0,0,0,.5) !important;
+  background-color: #ffffff !important;
+}
+
+body.hold-transition.sidebar-mini .modal-header {
+  border-bottom: 1px solid #e9ecef !important;
+  padding: 1rem !important;
+}
+
+body.hold-transition.sidebar-mini .modal-footer {
+  border-top: 1px solid #e9ecef !important;
+  padding: 1rem !important;
+}
+
 
 

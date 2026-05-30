@@ -311,7 +311,7 @@ export const getRedeems = async (req, res) => {
       `SELECT w.id, w.amount, w.amount_coins, w.amount_currency, w.details, w.status, w.created_at,
               pm.name as method_name, pm.icon_url as method_logo, w.method_id
        FROM withdrawals w
-       LEFT JOIN payout_methods pm ON w.method_id = pm.id
+       LEFT JOIN payout_methods pm ON (w.method_id COLLATE utf8mb4_unicode_ci) = (pm.id COLLATE utf8mb4_unicode_ci)
        WHERE w.user_id = ?
        ORDER BY w.created_at DESC
        LIMIT ? OFFSET ?`,
