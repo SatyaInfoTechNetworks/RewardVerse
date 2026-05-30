@@ -1402,16 +1402,28 @@ export default function AdminPortal() {
                         {/* Primary Info */}
                         <div className="card card-white shadow-none border rounded-lg">
                           <div className="card-body">
-                            <div className="form-group mb-3">
-                              <label className="text-sm font-weight-bold">Offer Primary Title</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                placeholder="e.g. Install & Open Application" 
-                                value={offerForm.title} 
-                                onChange={e => setOfferForm({ ...offerForm, title: e.target.value })} 
-                                required 
-                              />
+                            <div className="row">
+                              <div className="col-md-8 form-group mb-3">
+                                <label className="text-sm font-weight-bold">Offer Primary Title</label>
+                                <input 
+                                  type="text" 
+                                  className="form-control" 
+                                  placeholder="e.g. Install & Open Application" 
+                                  value={offerForm.title} 
+                                  onChange={e => setOfferForm({ ...offerForm, title: e.target.value })} 
+                                  required 
+                                />
+                              </div>
+                              <div className="col-md-4 form-group mb-3">
+                                <label className="text-sm font-weight-bold">Partner ID / Code (External ID)</label>
+                                <input 
+                                  type="text" 
+                                  className="form-control" 
+                                  placeholder="e.g. tg_join" 
+                                  value={offerForm.external_id || ''} 
+                                  onChange={e => setOfferForm({ ...offerForm, external_id: e.target.value })} 
+                                />
+                              </div>
                             </div>
                             <div className="form-group mb-3">
                               <label className="text-sm font-weight-bold">Detailed Instruction</label>
@@ -1546,6 +1558,26 @@ export default function AdminPortal() {
                                 <option value="General">General</option>
                               </select>
                             </div>
+                            <div className="form-group mb-3">
+                              <label className="text-sm font-weight-bold">Daily Completion Cap</label>
+                              <input 
+                                type="number" 
+                                className="form-control" 
+                                placeholder="e.g. 100 (0 for unlimited)" 
+                                value={offerForm.daily_completion_cap} 
+                                onChange={e => setOfferForm({ ...offerForm, daily_completion_cap: parseInt(e.target.value || 0) })} 
+                              />
+                            </div>
+                            <div className="form-group mb-3">
+                              <label className="text-sm font-weight-bold">Country Targeting Whitelist</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                placeholder="e.g. IN,US (or * for all)" 
+                                value={offerForm.country_targeting} 
+                                onChange={e => setOfferForm({ ...offerForm, country_targeting: e.target.value })} 
+                              />
+                            </div>
                             <div className="form-group mt-3">
                               <div className="custom-control custom-switch">
                                 <input 
@@ -1588,6 +1620,54 @@ export default function AdminPortal() {
                                 <option value="offline">Manual Proof Review</option>
                               </select>
                             </div>
+
+                            {offerForm.type === 'offline' && (
+                              <>
+                                <div className="form-group mb-3 border-top pt-2">
+                                  <label className="text-sm font-weight-bold text-primary">Offline Proof Type</label>
+                                  <select 
+                                    className="form-control" 
+                                    value={offerForm.input_type || ''} 
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      let autoInst = [];
+                                      if (val === 'file') {
+                                        autoInst = [{ label: "Upload Screenshot", type: "file", required: true }];
+                                      } else if (val === 'text') {
+                                        autoInst = [{ label: "Enter Proof Text / Code", type: "text", required: true }];
+                                      }
+                                      setOfferForm({ ...offerForm, input_type: val, input_instruction: autoInst });
+                                    }}
+                                  >
+                                    <option value="">None (Custom fields below)</option>
+                                    <option value="file">Screenshot File Upload</option>
+                                    <option value="text">Text / String Value</option>
+                                  </select>
+                                </div>
+                                <div className="form-group mb-3">
+                                  <label className="text-sm font-weight-bold text-primary">Proof Configuration (JSON)</label>
+                                  <textarea 
+                                    className="form-control text-monospace" 
+                                    rows={4} 
+                                    style={{ fontSize: '0.85rem' }}
+                                    placeholder='e.g. [{"label":"Telegram Username","type":"text","required":true}]' 
+                                    value={typeof offerForm.input_instruction === 'string' ? offerForm.input_instruction : JSON.stringify(offerForm.input_instruction, null, 2)} 
+                                    onChange={e => {
+                                      const rawVal = e.target.value;
+                                      let parsed = rawVal;
+                                      try {
+                                        parsed = JSON.parse(rawVal);
+                                      } catch (err) {
+                                        // Keep raw string while editing
+                                      }
+                                      setOfferForm({ ...offerForm, input_instruction: parsed });
+                                    }}
+                                  />
+                                  <span className="text-muted text-xs d-block mt-1">Specify fields to collect in mobile app. Must be a valid JSON array of objects.</span>
+                                </div>
+                              </>
+                            )}
+
                             <div className="form-group mb-3">
                               <label className="text-sm font-weight-bold">Difficulty</label>
                               <select 
