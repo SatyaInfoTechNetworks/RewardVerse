@@ -424,7 +424,7 @@ export const handlePubscaleChargeback = async (req, res) => {
 export const handleCpxResearch = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const CPX_SECURE_HASH = "c61DO2Aq2vD6kZZ9OlLZzNtiXPoDrh2R";
+    const CPX_SECURE_HASH = "yyZpfQ6EDvthdxvFYbbhJHfED6FhH1N6";
     const { status, trans_id, user_id, amount_local = 0, hash, type = '', offer_id = '' } = req.query;
 
     console.log('[CPX_RESEARCH] Incoming:', req.query);

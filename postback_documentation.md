@@ -222,7 +222,7 @@ Called by CPX Research for survey completions and reversals.
 hash = md5( trans_id + "-" + SECURE_HASH )
 ```
 
-> **Secure Hash:** `c61DO2Aq2vD6kZZ9OlLZzNtiXPoDrh2R`
+> **Secure Hash:** `yyZpfQ6EDvthdxvFYbbhJHfED6FhH1N6`
 
 ### Request Parameters
 
