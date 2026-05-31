@@ -17,10 +17,10 @@ try {
     if ((envJson.startsWith('"') && envJson.endsWith('"')) || (envJson.startsWith("'") && envJson.endsWith("'"))) {
       envJson = envJson.substring(1, envJson.length - 1);
     }
-    // Handle double-escaped newlines robustly
-    envJson = envJson.replace(/\\n/g, '\n');
-
     const serviceAccount = JSON.parse(envJson);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     firebaseApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
