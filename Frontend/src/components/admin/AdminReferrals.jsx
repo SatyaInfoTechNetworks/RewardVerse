@@ -10,7 +10,8 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
     referee_signup_bonus: '',
     referrer_reward_coins: '',
     referral_condition_type: 'MIN_TASKS',
-    referral_condition_threshold: ''
+    referral_condition_threshold: '',
+    is_commission_active: true
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -29,7 +30,8 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
           referee_signup_bonus: data.settings.referee_signup_bonus ?? '',
           referrer_reward_coins: data.settings.referrer_reward_coins ?? '',
           referral_condition_type: data.settings.referral_condition_type ?? 'MIN_TASKS',
-          referral_condition_threshold: data.settings.referral_condition_threshold ?? ''
+          referral_condition_threshold: data.settings.referral_condition_threshold ?? '',
+          is_commission_active: data.settings.is_commission_active !== undefined ? Boolean(data.settings.is_commission_active) : true
         });
       }
     } catch (err) {
@@ -56,7 +58,8 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
           referee_signup_bonus: parseFloat(settings.referee_signup_bonus || 0),
           referrer_reward_coins: parseFloat(settings.referrer_reward_coins || 0),
           referral_condition_type: settings.referral_condition_type,
-          referral_condition_threshold: parseFloat(settings.referral_condition_threshold || 0)
+          referral_condition_threshold: parseFloat(settings.referral_condition_threshold || 0),
+          is_commission_active: settings.is_commission_active
         })
       });
       const data = await res.json();
@@ -292,8 +295,50 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
                 </p>
               </div>
 
-              {/* Lifetime commission */}
+              {/* Lifetime commission status toggle */}
               <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                  Referral Commission Status
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+                  <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.is_commission_active}
+                      onChange={(e) => setSettings({ ...settings, is_commission_active: e.target.checked })}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span style={{
+                      position: 'absolute',
+                      cursor: 'pointer',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      backgroundColor: settings.is_commission_active ? 'var(--primary, #3b82f6)' : '#3f3f46',
+                      transition: '0.4s',
+                      borderRadius: '34px'
+                    }}>
+                      <span style={{
+                        position: 'absolute',
+                        height: '18px',
+                        width: '18px',
+                        left: settings.is_commission_active ? '28px' : '4px',
+                        bottom: '4px',
+                        backgroundColor: 'white',
+                        transition: '0.4s',
+                        borderRadius: '50%'
+                      }} />
+                    </span>
+                  </label>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: settings.is_commission_active ? '#10b981' : 'var(--text-muted)' }}>
+                    {settings.is_commission_active ? 'ENABLED' : 'DISABLED'}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
+                  Turn the commission reward system ON or OFF globally.
+                </p>
+              </div>
+
+              {/* Lifetime commission */}
+              <div className="form-group" style={{ marginBottom: 0, opacity: settings.is_commission_active ? 1 : 0.4, transition: 'all 0.3s ease' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
                   <Percent size={14} style={{ color: '#f59e0b' }} /> Lifetime Commission Percent (%)
                 </label>
@@ -304,11 +349,12 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
                   step="0.1"
                   min="0"
                   max="100"
+                  disabled={!settings.is_commission_active}
                   style={{ borderRadius: '10px', padding: '12px 14px' }}
                   {...field('commission_percent')}
                 />
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  The percentage ofreferred friend's task earnings credited to the referrer <strong>forever</strong>. Set to 0 to disable.
+                  The percentage of referred friend's task earnings credited to the referrer <strong>forever</strong>.
                 </p>
               </div>
 

@@ -1354,7 +1354,8 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
     await checkAndRewardReferrer(connection, referredUserId, 'LIFETIME_COINS', { incomingCoins: rewardAmount });
 
     const commPercent = parseInt(settings.commission_percent);
-    if (commPercent > 0) {
+    const isCommActive = settings.is_commission_active !== undefined ? Boolean(settings.is_commission_active) : true;
+    if (isCommActive && commPercent > 0) {
       const commissionAmount = rewardAmount * (commPercent / 100);
 
       if (commissionAmount > 0) {

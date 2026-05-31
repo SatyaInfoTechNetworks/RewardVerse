@@ -540,6 +540,7 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'referral_settings', 'referrer_reward_coins', 'DECIMAL(10, 2) DEFAULT 10.00');
     await addColumnIfNotExists(connection, 'referral_settings', 'referral_condition_type', "VARCHAR(50) DEFAULT 'MIN_TASKS'");
     await addColumnIfNotExists(connection, 'referral_settings', 'referral_condition_threshold', 'DECIMAL(10, 2) DEFAULT 2.00');
+    await addColumnIfNotExists(connection, 'referral_settings', 'is_commission_active', 'BOOLEAN DEFAULT TRUE');
 
     // 25. visit_earn_tasks Table
     await connection.query(`

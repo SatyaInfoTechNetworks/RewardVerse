@@ -1057,7 +1057,8 @@ export const getReferralSettings = async (req, res) => {
       referee_signup_bonus: 0,
       referrer_reward_coins: 10,
       referral_condition_type: 'MIN_TASKS',
-      referral_condition_threshold: 2
+      referral_condition_threshold: 2,
+      is_commission_active: 1
     };
     
     if (rows.length > 0) {
@@ -1070,7 +1071,8 @@ export const getReferralSettings = async (req, res) => {
           referee_signup_bonus: s.referee_signup_bonus ?? 0,
           referrer_reward_coins: s.referrer_reward_coins ?? s.bonus_coins ?? 10,
           referral_condition_type: s.referral_condition_type || 'MIN_TASKS',
-          referral_condition_threshold: s.referral_condition_threshold ?? s.offers_required ?? 2
+          referral_condition_threshold: s.referral_condition_threshold ?? s.offers_required ?? 2,
+          is_commission_active: s.is_commission_active !== undefined ? s.is_commission_active : 1
         } 
       });
     } else {
@@ -1092,7 +1094,8 @@ export const updateReferralSettings = async (req, res) => {
       referee_signup_bonus,
       referrer_reward_coins,
       referral_condition_type,
-      referral_condition_threshold
+      referral_condition_threshold,
+      is_commission_active
     } = req.body;
 
     const [existing] = await pool.query('SELECT id FROM referral_settings LIMIT 1');
@@ -1103,27 +1106,30 @@ export const updateReferralSettings = async (req, res) => {
     const cleanConditionThreshold = parseFloat(referral_condition_threshold !== undefined ? referral_condition_threshold : (offers_required || 2));
     const cleanCommPercent = parseInt(commission_percent || 10);
     const cleanDescription = description_text || '';
+    const cleanIsCommissionActive = is_commission_active !== undefined ? (is_commission_active ? 1 : 0) : 1;
 
     if (existing.length > 0) {
       await pool.query(
         `UPDATE referral_settings 
          SET bonus_coins=?, commission_percent=?, offers_required=?, description_text=?,
-             referee_signup_bonus=?, referrer_reward_coins=?, referral_condition_type=?, referral_condition_threshold=? 
+             referee_signup_bonus=?, referrer_reward_coins=?, referral_condition_type=?, referral_condition_threshold=?,
+             is_commission_active=? 
          WHERE id=?`,
         [
           cleanReferrerRewardCoins, cleanCommPercent, Math.round(cleanConditionThreshold), cleanDescription,
           cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold,
-          existing[0].id
+          cleanIsCommissionActive, existing[0].id
         ]
       );
     } else {
       await pool.query(
         `INSERT INTO referral_settings 
-          (bonus_coins, commission_percent, offers_required, description_text, referee_signup_bonus, referrer_reward_coins, referral_condition_type, referral_condition_threshold) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (bonus_coins, commission_percent, offers_required, description_text, referee_signup_bonus, referrer_reward_coins, referral_condition_type, referral_condition_threshold, is_commission_active) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           cleanReferrerRewardCoins, cleanCommPercent, Math.round(cleanConditionThreshold), cleanDescription,
-          cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold
+          cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold,
+          cleanIsCommissionActive
         ]
       );
     }
