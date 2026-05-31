@@ -551,6 +551,33 @@ export default function AdminPortal() {
     }
   };
 
+  const handleDeleteFingerprint = async (fpId) => {
+    if (!window.confirm("Are you sure you want to clear/delete this device fingerprint link? This will allow this phone/device to be used on other accounts.")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/fingerprints/${fpId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      if (!checkResponseStatus(res)) return;
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', 'Device fingerprint cleared successfully');
+        setSelectedUser(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            fingerprints: (prev.fingerprints || []).filter(fp => fp.id !== fpId)
+          };
+        });
+        fetchUsers();
+      } else {
+        showNotice('error', data.message);
+      }
+    } catch (err) {
+      showNotice('error', 'Failed to clear device fingerprint');
+    }
+  };
+
   const handleAdjustBalance = async (e) => {
     e.preventDefault();
     if (!selectedUser || !adjustAmount) return;
@@ -2354,6 +2381,30 @@ export default function AdminPortal() {
                       ) : (
                         <div className="mb-0">
                           <span className="text-xs text-success font-weight-bold">Compliance Status: Active / Good Standing</span>
+                        </div>
+                      )}
+
+                      {/* Fingerprint Devices List */}
+                      {selectedUser.fingerprints && selectedUser.fingerprints.length > 0 && (
+                        <div className="mt-3 pt-3 border-top">
+                          <span className="text-xs text-muted font-weight-bold d-block mb-2"><i className="fas fa-fingerprint text-warning mr-1"></i> Registered Security Fingerprints:</span>
+                          <div className="d-flex flex-column" style={{ gap: '8px' }}>
+                            {selectedUser.fingerprints.map(fp => (
+                              <div key={fp.id} className="p-2 border rounded bg-white d-flex justify-content-between align-items-center shadow-sm">
+                                <div className="text-xs text-dark" style={{ lineHeight: '1.4' }}>
+                                  <div className="font-weight-bold" style={{ fontSize: '0.8rem' }}>
+                                    <i className="fas fa-mobile-alt text-secondary mr-1"></i> {fp.device_model || 'Unknown Model'} 
+                                    <span className="text-muted font-weight-normal ml-1">(OS: {fp.os_version || 'N/A'}, App: {fp.app_version || '1.0.0'})</span>
+                                  </div>
+                                  <div>Android ID: <code className="text-danger">{fp.android_id}</code></div>
+                                  <div className="text-muted">IP Address: <strong>{fp.ip_address}</strong> | Linked: {new Date(fp.created_at).toLocaleString()}</div>
+                                </div>
+                                <button className="btn btn-outline-danger btn-xs px-2 rounded-pill font-weight-bold" title="Unbind Device" onClick={() => handleDeleteFingerprint(fp.id)}>
+                                  <i className="fas fa-trash mr-1"></i> Clear
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

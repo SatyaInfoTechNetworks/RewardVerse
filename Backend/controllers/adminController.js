@@ -103,6 +103,26 @@ export const listUsers = async (req, res) => {
       [...params, parseInt(limit), offset]
     );
 
+    if (users.length > 0) {
+      const userIds = users.map(u => u.id);
+      const [fingerprints] = await pool.query(
+        'SELECT * FROM device_fingerprints WHERE user_id IN (?)',
+        [userIds]
+      );
+      // Group fingerprints by user_id
+      const fingerprintsMap = {};
+      fingerprints.forEach(fp => {
+        if (!fingerprintsMap[fp.user_id]) {
+          fingerprintsMap[fp.user_id] = [];
+        }
+        fingerprintsMap[fp.user_id].push(fp);
+      });
+      // Attach to users
+      users.forEach(u => {
+        u.fingerprints = fingerprintsMap[u.id] || [];
+      });
+    }
+
     res.json({
       success: true,
       users,
@@ -436,6 +456,40 @@ export const deleteUser = async (req, res) => {
     console.error('Delete User Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   } finally { connection.release(); }
+};
+
+export const deleteDeviceFingerprint = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const { id } = req.params;
+    await connection.beginTransaction();
+
+    const [fpRows] = await connection.query('SELECT * FROM device_fingerprints WHERE id = ? LIMIT 1 FOR UPDATE', [id]);
+    if (fpRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: 'Fingerprint not found' });
+    }
+
+    await connection.query('DELETE FROM device_fingerprints WHERE id = ?', [id]);
+
+    const adminId = req.admin && req.admin.id ? req.admin.id : 'admin';
+    await logAdminAction(connection, {
+      adminId,
+      actionType: 'DELETE_DEVICE_FINGERPRINT',
+      targetId: id,
+      payload: fpRows[0],
+      req
+    });
+
+    await connection.commit();
+    res.json({ success: true, message: 'Device fingerprint cleared successfully' });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Delete Fingerprint Error:', error);
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+  } finally {
+    connection.release();
+  }
 };
 
 // ==========================================

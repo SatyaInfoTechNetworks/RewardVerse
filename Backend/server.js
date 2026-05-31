@@ -119,7 +119,8 @@ import {
   rejectProof,
   resetAllDailySpins,
   deleteUser,
-  deleteTransactionAdmin
+  deleteTransactionAdmin,
+  deleteDeviceFingerprint
 } from './controllers/adminController.js';
 
 import {
@@ -313,6 +314,7 @@ app.put('/api/admin/users/:id', authenticateAdmin, updateUser);
 app.post('/api/admin/users/:id/ban', authenticateAdmin, banUser);
 app.post('/api/admin/users/:id/unban', authenticateAdmin, unbanUser);
 app.delete('/api/admin/users/:id', authenticateAdmin, deleteUser);
+app.delete('/api/admin/users/fingerprints/:id', authenticateAdmin, deleteDeviceFingerprint);
 
 // Offers Management
 app.get('/api/admin/offers', authenticateAdmin, listAdminOffers);
