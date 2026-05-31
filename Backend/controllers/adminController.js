@@ -280,6 +280,27 @@ export const updateUser = async (req, res) => {
       ]
     );
 
+    // Sync device_fingerprints if android_id is updated by admin
+    if (android_id !== undefined && android_id !== user.android_id) {
+      if (android_id === '' || android_id === null) {
+        await connection.query('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
+      } else {
+        const [fpRows] = await connection.query('SELECT id FROM device_fingerprints WHERE user_id = ? LIMIT 1', [userId]);
+        if (fpRows.length > 0) {
+          await connection.query(
+            'UPDATE device_fingerprints SET android_id = ? WHERE user_id = ?',
+            [android_id, userId]
+          );
+        } else {
+          const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+          await connection.query(
+            'INSERT INTO device_fingerprints (id, user_id, android_id, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())',
+            [uuidv4(), userId, android_id, ipAddress]
+          );
+        }
+      }
+    }
+
     // Audit Log admin action
     const adminId = req.admin && req.admin.id ? req.admin.id : 'admin';
     await logAdminAction(connection, {
