@@ -54,19 +54,38 @@ try {
   console.error('❌ Failed to initialize Firebase Admin SDK:', err.message);
 }
 
-/**
- * Send push notification to a specific user
- */
 export async function sendNotification(userId, title, body, imageUrl = null) {
   try {
-    // 1. Get user fcm_token, uid, and id using multiple identifier types
-    const [rows] = await pool.query(
-      'SELECT id, fcm_token, uid, user_id FROM users WHERE id = ? OR user_id = ? OR uid = ? LIMIT 1',
-      [userId, userId, userId]
-    );
-    
-    if (rows.length === 0) return false;
-    const user = rows[0];
+    if (!userId) return false;
+
+    let user = null;
+
+    // 1. Try by Firebase UID first (string)
+    const [rowsByUid] = await pool.query('SELECT id, fcm_token, uid, user_id FROM users WHERE uid = ? LIMIT 1', [userId]);
+    if (rowsByUid.length > 0) {
+      user = rowsByUid[0];
+    } else {
+      // 2. Try by custom 10-char hex public user_id (string)
+      const [rowsByHexId] = await pool.query('SELECT id, fcm_token, uid, user_id FROM users WHERE user_id = ? LIMIT 1', [userId]);
+      if (rowsByHexId.length > 0) {
+        user = rowsByHexId[0];
+      } else {
+        // 3. Try by internal auto-increment ID (if numeric or safe)
+        const isNumeric = /^\d+$/.test(String(userId));
+        if (isNumeric) {
+          const [rowsById] = await pool.query('SELECT id, fcm_token, uid, user_id FROM users WHERE id = ? LIMIT 1', [userId]);
+          if (rowsById.length > 0) {
+            user = rowsById[0];
+          }
+        }
+      }
+    }
+
+    if (!user) {
+      console.log(`ℹ️ sendNotification failed: User not found for identifier: ${userId}`);
+      return false;
+    }
+
     const resolvedUserId = user.id;
 
     // Log to notification history
@@ -115,8 +134,10 @@ export async function sendNotification(userId, title, body, imageUrl = null) {
  */
 export async function broadcastNotification(title, body, imageUrl = null) {
   try {
-    const [cnt] = await pool.query('SELECT COUNT(*) as c FROM users WHERE fcm_token IS NOT NULL AND fcm_token != ""');
-    const sentCount = cnt[0].c;
+    // 1. Fetch all unique non-empty FCM tokens from the database
+    const [tokenRows] = await pool.query('SELECT DISTINCT fcm_token FROM users WHERE fcm_token IS NOT NULL AND fcm_token != ""');
+    const tokens = tokenRows.map(r => r.fcm_token);
+    const sentCount = tokens.length;
 
     // Log to notification history
     await pool.query(
@@ -124,28 +145,39 @@ export async function broadcastNotification(title, body, imageUrl = null) {
       [title, body, imageUrl || null, sentCount]
     );
 
-    if (firebaseApp) {
-      // Broadcast via topic (e.g., 'all')
-      const message = {
-        topic: 'all',
-        notification: {
-          title,
-          body,
-          ...(imageUrl ? { image: imageUrl } : {})
-        },
-        data: {
-          click_action: 'FLUTTER_NOTIFICATION_CLICK',
-          title,
-          body,
-          image: imageUrl || '',
-          type: 'general'
-        }
-      };
+    if (sentCount === 0) {
+      console.log(`📢 Broadcast requested but 0 active FCM tokens found in DB.`);
+      return true;
+    }
 
-      await admin.messaging().send(message);
-      console.log(`📢 Global push broadcast sent.`);
+    if (firebaseApp) {
+      // Send in chunks of 500 (Firebase multicast limit is 500 messages per call)
+      const chunkSize = 500;
+      for (let i = 0; i < tokens.length; i += chunkSize) {
+        const chunk = tokens.slice(i, i + chunkSize);
+        
+        // Construct array of messages for batch delivery
+        const messages = chunk.map(token => ({
+          token: token,
+          notification: {
+            title,
+            body,
+            ...(imageUrl ? { image: imageUrl } : {})
+          },
+          data: {
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+            title,
+            body,
+            image: imageUrl || '',
+            type: 'general'
+          }
+        }));
+
+        await admin.messaging().sendEach(messages);
+      }
+      console.log(`📢 Global push broadcast sent to ${sentCount} individual tokens successfully.`);
     } else {
-      console.log(`📢 [Mock Global Broadcast] ${title}: ${body} (Banner: ${imageUrl || 'None'})`);
+      console.log(`📢 [Mock Global Broadcast] ${title}: ${body} (Sent to ${sentCount} tokens)`);
     }
 
     return true;
