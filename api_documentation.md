@@ -153,66 +153,103 @@ Updates Firebase Cloud Messaging push token for the user.
 
 ### 2.4 Daily Check-in / Streak Claim
 Claim the daily login coin reward.
-* **Route**: `POST /api/user/daily-checkin` (supports legacy `POST /api/user/streak.php`)
+* **Route**: `POST /api/user/daily-checkin` (supports aliases `POST /api/user/streak.php` and `POST /api/user/streak`)
 * **Headers**: `Authorization: Bearer <JWT_TOKEN>`
+* **Request Body**: None
 * **Success Response (JSON)**:
   ```json
   {
     "success": true,
-    "message": "Daily check-in successful! Claimed 10.00 coins.",
-    "reward": 10.00,
-    "streak": 4
+    "message": "Streak claimed!",
+    "claimed_amount": 30.00,
+    "new_streak": 1
+  }
+  ```
+* **Error Response - Already Claimed (JSON)**:
+  ```json
+  {
+    "success": false,
+    "message": "Already claimed today."
   }
   ```
 
 ### 2.5 Get Streak Status
+Retrieve the user's current check-in streak status, eligibility to claim, and rewards configuration.
 * **Route**: `GET /api/user/streak` (supports legacy `GET /api/user/streak.php`)
 * **Headers**: `Authorization: Bearer <JWT_TOKEN>`
 * **Success Response (JSON)**:
   ```json
   {
     "success": true,
-    "streak": {
-      "current_streak": 4,
-      "last_claim_date": "2026-05-29",
-      "can_claim": false
+    "data": {
+      "current_streak": 2,
+      "last_claim_date": "2026-06-07",
+      "can_claim": true,
+      "next_reward": 50,
+      "rewards_config": {
+        "1": 30,
+        "2": 40,
+        "3": 50,
+        "4": 60,
+        "5": 70,
+        "6": 80,
+        "7": 200
+      }
     }
   }
   ```
 
 ### 2.6 Lucky Spin Status
-Get spins remaining and last spin timestamp.
+Get spins remaining, daily limit, and the probability layout.
 * **Route**: `GET /api/user/spin` (supports legacy `GET /api/user/spin.php`)
 * **Headers**: `Authorization: Bearer <JWT_TOKEN>`
 * **Success Response (JSON)**:
   ```json
   {
     "success": true,
-    "spin": {
+    "data": {
       "spins_left": 2,
-      "last_spin_date": "2026-05-28",
-      "can_spin": true
+      "daily_limit": 2,
+      "total_spins": 4,
+      "probabilities_config": [
+        { "type": "COINS", "prob": 25, "range": [5, 10] },
+        { "type": "COINS", "prob": 45, "range": [10, 20] },
+        { "type": "NONE", "prob": 30, "range": [0, 0] }
+      ]
     }
   }
   ```
 
 ### 2.7 Spin & Earn Reward
-Claim coin reward from the spinner.
+Perform a spin. The reward is determined completely server-side to prevent client tampering.
 * **Route**: `POST /api/user/spin` (supports legacy `POST /api/user/spin.php`)
 * **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-* **Request Body (JSON)**:
-  ```json
-  {
-    "rewardAmount": 5.00 // Validated server-side against configuration
-  }
-  ```
-* **Success Response (JSON)**:
+* **Request Body**: None
+* **Success Response - Win (JSON)**:
   ```json
   {
     "success": true,
-    "message": "Spinned successfully! Gained 5.00 coins.",
-    "reward": 5.00,
-    "spinsLeft": 1
+    "amount": 15,
+    "type": "COINS",
+    "spins_left": 1,
+    "message": "You won 15 coins!"
+  }
+  ```
+* **Success Response - No Win (JSON)**:
+  ```json
+  {
+    "success": true,
+    "amount": 0,
+    "type": "NONE",
+    "spins_left": 1,
+    "message": "Better luck next time!"
+  }
+  ```
+* **Error Response - Limit Reached (JSON)**:
+  ```json
+  {
+    "success": false,
+    "message": "No spins left for today! Try again tomorrow."
   }
   ```
 

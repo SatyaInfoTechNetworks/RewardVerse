@@ -19,7 +19,7 @@ async function migrateColumnToVarcharIfNumeric(connection, tableName, columnName
       const type = rows[0].Type.toLowerCase();
       if (type.includes('int') || type.includes('decimal') || type.includes('double') || type.includes('float')) {
         console.log(`⚡ Legacy numeric column detected: [${tableName}.${columnName}] (${type}). Migrating to VARCHAR(${size})...`);
-        
+
         if (rows[0].Extra && rows[0].Extra.toLowerCase().includes('auto_increment')) {
           console.log(`  🔧 Removing AUTO_INCREMENT from [${tableName}.${columnName}]...`);
           await connection.query(`ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${columnName}\` ${rows[0].Type} NOT NULL`).catch(err => {
@@ -40,7 +40,7 @@ async function migrateColumnToVarcharIfNumeric(connection, tableName, columnName
 
         for (const fk of fkRows) {
           console.log(`  🔧 Dropping FK [${fk.CONSTRAINT_NAME}] on [${fk.TABLE_NAME}.${fk.COLUMN_NAME}]...`);
-          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
+          await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => { });
           await connection.query(`ALTER TABLE \`${fk.TABLE_NAME}\` MODIFY COLUMN \`${fk.COLUMN_NAME}\` VARCHAR(${size}) NOT NULL`).catch((e) => {
             console.warn(`  ⚠️ Could not modify referencing column ${fk.TABLE_NAME}.${fk.COLUMN_NAME}:`, e.message);
           });
@@ -65,10 +65,10 @@ async function sweepLegacyColumnsForDefaults(connection, tableName) {
         AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL AND COLUMN_KEY != 'PRI'
         AND EXTRA NOT LIKE '%auto_increment%'
     `, [dbName, tableName]);
-    
+
     for (const col of cols) {
       const dt = col.DATA_TYPE.toLowerCase();
-      let def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0' 
+      let def = (dt.includes('int') || dt.includes('decimal') || dt.includes('float') || dt.includes('double') || dt.includes('bit')) ? '0'
         : (dt.includes('timestamp') || dt.includes('datetime') ? 'CURRENT_TIMESTAMP' : "''");
       console.log(`  🔧 Setting default for legacy ${tableName} column [${col.COLUMN_NAME}] → DEFAULT ${def}`);
       await connection.query(`ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${col.COLUMN_NAME}\` ${col.COLUMN_TYPE} NOT NULL DEFAULT ${def}`).catch(e => {
@@ -308,7 +308,7 @@ export async function initializeDatabase() {
           WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = 'payout_tiers' AND kcu.COLUMN_NAME = 'payout_method_id'
         `, [dbNameT]);
         for (const fk of fkT) {
-          await connection.query(`ALTER TABLE payout_tiers DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
+          await connection.query(`ALTER TABLE payout_tiers DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => { });
         }
         await connection.query(`ALTER TABLE payout_tiers CHANGE COLUMN payout_method_id method_id VARCHAR(100) NOT NULL`);
         console.log('✅ payout_tiers.payout_method_id renamed to method_id.');
@@ -378,7 +378,7 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'banners', 'display_order', 'INT DEFAULT 0');
     await addColumnIfNotExists(connection, 'banners', 'is_active', 'BOOLEAN DEFAULT TRUE');
     await addColumnIfNotExists(connection, 'banners', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
-    
+
     // Fix legacy fields in banners if necessary
     try {
       await connection.query("ALTER TABLE banners MODIFY COLUMN active TINYINT(1) NOT NULL DEFAULT 1");
@@ -724,7 +724,7 @@ export async function initializeDatabase() {
       console.log('⚡ Ensuring column types are flexible (legacy ENUM to VARCHAR)...');
       await connection.query('ALTER TABLE transactions MODIFY COLUMN type VARCHAR(20) NOT NULL');
       await connection.query('ALTER TABLE transactions MODIFY COLUMN source VARCHAR(50) NOT NULL');
-      await connection.query('ALTER TABLE transactions MODIFY COLUMN reference_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL').catch(() => {});
+      await connection.query('ALTER TABLE transactions MODIFY COLUMN reference_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL').catch(() => { });
       await connection.query('ALTER TABLE withdrawals MODIFY COLUMN method VARCHAR(50) NOT NULL');
       await connection.query('ALTER TABLE withdrawals MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT \'PENDING\'');
       await connection.query('ALTER TABLE contest_entries MODIFY COLUMN entry_source VARCHAR(50) NOT NULL');
@@ -737,10 +737,10 @@ export async function initializeDatabase() {
     // Index Optimizations
     try {
       console.log('⚡ Ensuring index optimizations...');
-      await connection.query('CREATE INDEX idx_user_offer_status ON user_offer_progress (user_id, offer_id, status)').catch(() => {});
-      await connection.query('CREATE INDEX idx_offer_type_status ON user_offer_progress (admin_status, last_updated DESC)').catch(() => {});
-      await connection.query('CREATE INDEX idx_user_trans_date ON transactions (user_id, created_at DESC)').catch(() => {});
-      await connection.query('CREATE INDEX idx_offer_active_hot ON offers (is_active, is_hot)').catch(() => {});
+      await connection.query('CREATE INDEX idx_user_offer_status ON user_offer_progress (user_id, offer_id, status)').catch(() => { });
+      await connection.query('CREATE INDEX idx_offer_type_status ON user_offer_progress (admin_status, last_updated DESC)').catch(() => { });
+      await connection.query('CREATE INDEX idx_user_trans_date ON transactions (user_id, created_at DESC)').catch(() => { });
+      await connection.query('CREATE INDEX idx_offer_active_hot ON offers (is_active, is_hot)').catch(() => { });
     } catch (idxErr) {
       console.log('⚠️ Index creation info:', idxErr.message);
     }
