@@ -70,9 +70,9 @@ export default function Landing() {
               fontWeight: 800,
               color: '#fff',
               fontSize: '1.2rem'
-            }}>R</div>
+            }}>S</div>
             <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff' }}>
-              Reward<span style={{ color: 'var(--primary)' }}>verse</span>
+              Rewardverse<span style={{ color: 'var(--primary)' }}>India</span>
             </span>
           </Link>
           <nav style={{ display: 'flex', gap: '30px' }} className="nav-menu">
@@ -453,9 +453,9 @@ export default function Landing() {
                   fontWeight: 800,
                   color: '#fff',
                   fontSize: '1rem'
-                }}>R</div>
+                }}>S</div>
                 <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff' }}>
-                  Reward<span style={{ color: 'var(--primary)' }}>verse</span>
+                  Rewardverse<span style={{ color: 'var(--primary)' }}>India</span>
                 </span>
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>

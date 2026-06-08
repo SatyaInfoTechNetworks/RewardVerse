@@ -1,6 +1,6 @@
 import pool from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
-import { checkAndRewardReferrer } from '../utils/referralHelper.js';
+import { sendNotification } from '../utils/notifications.js';
 
 // 1. Get Wallet Balance and summary stats
 export const getWalletBalance = async (req, res) => {
@@ -70,9 +70,9 @@ export const getEarnings = async (req, res) => {
               o.title as offer_title, o.icon_url as offer_icon,
               oc.offer_name as completion_offer_name
        FROM transactions t
-       LEFT JOIN user_offer_progress uop ON (t.reference_id COLLATE utf8mb4_unicode_ci) = uop.click_id AND t.source = 'OFFER'
+       LEFT JOIN user_offer_progress uop ON t.reference_id = uop.click_id AND t.source = 'OFFER'
        LEFT JOIN offers o ON uop.offer_id = o.id
-       LEFT JOIN offer_completions oc ON (t.reference_id COLLATE utf8mb4_unicode_ci) = oc.completion_id
+       LEFT JOIN offer_completions oc ON t.reference_id = oc.completion_id
        WHERE t.user_id = ? AND (t.type = 'CREDIT' OR t.source LIKE '%REVERSAL%')
        ORDER BY t.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -127,6 +127,8 @@ export const getEarnings = async (req, res) => {
           description = 'Reversed: ' + (r.completion_offer_name || 'Pocketsfull Offer');
         } else if (r.source === 'REFERRAL' || r.source === 'REFERRAL_BONUS') {
           description = 'Referral Bonus';
+        } else if (r.source === 'WELCOME_BONUS') {
+          description = 'Welcome Bonus';
         } else if (r.source === 'COMMISSION') {
           description = 'Offer Commission';
         } else if (r.source === 'LIFAFA_BONUS') {
@@ -162,6 +164,7 @@ export const getEarnings = async (req, res) => {
         'POCKETSFULL_REVERSAL':   'POCKETSFULL',
         // Referral aliases
         'REFERRAL_BONUS':         'REFERRAL',
+        'WELCOME_BONUS':          'WELCOME_BONUS',
         'COMMISSION':             'REFERRAL',
         // Legacy offer alias
         'OFFER':                  'OFFLINE_OFFER',
@@ -241,6 +244,9 @@ export const getEarnings = async (req, res) => {
             iconUrl = 'https://img.icons8.com/color/96/internet.png';
             break;
           // ---- Social / Referral ----
+          case 'WELCOME_BONUS':
+            iconUrl = 'https://i.ibb.co/twLPSHST/giftbox-1139982.png';
+            break;
           case 'REFERRAL':
           case 'REFERRAL_BONUS':
           case 'COMMISSION':
@@ -308,10 +314,10 @@ export const getRedeems = async (req, res) => {
 
     // Fetch withdrawals with payout method details
     const [rows] = await pool.query(
-      `SELECT w.id, w.amount, w.amount_coins, w.amount_currency, w.details, w.status, w.created_at,
+      `SELECT w.id, w.amount, w.amount_coins, w.amount_currency, w.details, w.status, w.created_at, w.redeem_code,
               pm.name as method_name, pm.icon_url as method_logo, w.method_id
        FROM withdrawals w
-       LEFT JOIN payout_methods pm ON (w.method_id COLLATE utf8mb4_unicode_ci) = (pm.id COLLATE utf8mb4_unicode_ci)
+       LEFT JOIN payout_methods pm ON w.method_id = pm.id
        WHERE w.user_id = ?
        ORDER BY w.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -340,7 +346,8 @@ export const getRedeems = async (req, res) => {
         details: details,
         status: r.status,
         statusText: r.status ? (r.status.charAt(0) + r.status.slice(1).toLowerCase()) : 'Pending',
-        date: r.created_at
+        date: r.created_at,
+        redeemCode: r.redeem_code || null
       };
     });
 
@@ -545,10 +552,12 @@ export const requestWithdrawal = async (req, res) => {
       [withdrawCoins, userId]
     );
 
-    // H. Trigger "FIRST_REDEEM" dynamic referral condition check
-    await checkAndRewardReferrer(connection, userId, 'FIRST_REDEEM');
-
     await connection.commit();
+
+    // H. FIRE FIRST_WITHDRAWAL REFERRAL TRIGGER (async, non-blocking)
+    processFirstWithdrawalReferral(userId).catch(err =>
+      console.error('First withdrawal referral error:', err.message)
+    );
 
     res.json({
       success: true,
@@ -568,33 +577,16 @@ export const requestWithdrawal = async (req, res) => {
 export const getTransactions = async (req, res) => {
   try {
     const userId = req.user.id;
-    let rows;
-    // Try full query with reference_id JOIN first; fallback to simpler query for legacy DBs
-    try {
-      [rows] = await pool.query(
-        `SELECT t.id, t.user_id, t.amount, t.type, t.source,
-                IFNULL(t.reference_id, '') as reference_id, t.description, t.created_at,
-                o.icon_url as offer_icon
-         FROM transactions t
-         LEFT JOIN user_offer_progress uop ON (t.reference_id COLLATE utf8mb4_unicode_ci) = uop.click_id AND t.source = 'OFFER'
-         LEFT JOIN offers o ON uop.offer_id = o.id
-         WHERE t.user_id = ?
-         ORDER BY t.created_at DESC`,
-        [userId]
-      );
-    } catch (queryErr) {
-      // Fallback for legacy DB tables missing reference_id column
-      console.warn('getTransactions: falling back to simple query due to:', queryErr.message);
-      [rows] = await pool.query(
-        `SELECT t.id, t.user_id, t.amount, t.type, t.source,
-                '' as reference_id, t.description, t.created_at,
-                NULL as offer_icon
-         FROM transactions t
-         WHERE t.user_id = ?
-         ORDER BY t.created_at DESC`,
-        [userId]
-      );
-    }
+    const [rows] = await pool.query(
+      `SELECT t.id, t.user_id, t.amount, t.type, t.source, t.reference_id, t.description, t.created_at,
+              o.icon_url as offer_icon
+       FROM transactions t
+       LEFT JOIN user_offer_progress uop ON t.reference_id = uop.click_id AND t.source IN ('OFFER', 'OFFLINE_OFFER')
+       LEFT JOIN offers o ON uop.offer_id = o.id
+       WHERE t.user_id = ? 
+       ORDER BY t.created_at DESC`,
+      [userId]
+    );
 
     // Fetch dynamic icons config from DB
     const [configRows] = await pool.query("SELECT config_value FROM app_configs WHERE config_key = 'earning_icons' LIMIT 1").catch(() => [[]]);
@@ -623,6 +615,7 @@ export const getTransactions = async (req, res) => {
         'CPX_RESEARCH_REVERSAL':  'CPX_RESEARCH',
         'POCKETSFULL_REVERSAL':   'POCKETSFULL',
         'REFERRAL_BONUS':         'REFERRAL',
+        'WELCOME_BONUS':          'WELCOME_BONUS',
         'COMMISSION':             'REFERRAL',
         'OFFER':                  'OFFLINE_OFFER',
         'VISIT_EARN':             'OFFLINE_OFFER',
@@ -697,6 +690,9 @@ export const getTransactions = async (req, res) => {
             iconUrl = 'https://img.icons8.com/color/96/internet.png';
             break;
           // ---- Social / Referral ----
+          case 'WELCOME_BONUS':
+            iconUrl = 'https://i.ibb.co/twLPSHST/giftbox-1139982.png';
+            break;
           case 'REFERRAL':
           case 'REFERRAL_BONUS':
           case 'COMMISSION':
@@ -712,6 +708,9 @@ export const getTransactions = async (req, res) => {
           case 'WITHDRAWAL':
           case 'DEBIT_WITHDRAWAL':
             iconUrl = 'https://img.icons8.com/color/96/wallet--v1.png';
+            break;
+          case 'CONTEST_TICKET_PURCHASE':
+            iconUrl = 'https://img.icons8.com/color/96/two-tickets.png';
             break;
           default:
             iconUrl = 'https://i.ibb.co/twLPSHST/giftbox-1139982.png';
@@ -740,3 +739,108 @@ export const getTransactions = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+// =========================================================================
+// HELPER: PROCESS FIRST_WITHDRAWAL REFERRAL TRIGGER
+// Called when a referred user submits their first withdrawal
+// =========================================================================
+async function processFirstWithdrawalReferral(referredUserId) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // Check reward_trigger setting
+    const [settingsRows] = await connection.query('SELECT * FROM referral_settings LIMIT 1');
+    const settings = settingsRows.length > 0 ? settingsRows[0] : {};
+    const trigger = settings.reward_trigger || 'offers_completed';
+
+    if (trigger !== 'first_withdrawal') {
+      await connection.rollback();
+      return;
+    }
+
+    // Get referred_by from user
+    const [userRows] = await connection.query('SELECT referred_by FROM users WHERE id = ? LIMIT 1', [referredUserId]);
+    if (userRows.length === 0 || !userRows[0].referred_by) {
+      await connection.rollback();
+      return;
+    }
+    const referrerCode = userRows[0].referred_by;
+
+    // Find referrer
+    const [referrerRows] = await connection.query(
+      'SELECT id, name FROM users WHERE LOWER(referral_code) = LOWER(?) OR id = ? OR uid = ? LIMIT 1',
+      [referrerCode.trim(), referrerCode.trim(), referrerCode.trim()]
+    );
+    if (referrerRows.length === 0) {
+      await connection.rollback();
+      return;
+    }
+    const referrerId = referrerRows[0].id;
+
+    // Check if referred user has already made a withdrawal before (excluding this one)
+    const [prevWithdrawals] = await connection.query(
+      "SELECT COUNT(*) as count FROM withdrawals WHERE user_id = ? AND status != 'REJECTED'",
+      [referredUserId]
+    );
+    // If count > 1, this isn't their first — skip (count includes the one just submitted)
+    if (parseInt(prevWithdrawals[0].count) > 1) {
+      await connection.rollback();
+      return;
+    }
+
+    // Check referral_uses record — only reward if PENDING
+    const [useRows] = await connection.query(
+      'SELECT * FROM referral_uses WHERE referred_user_id = ? LIMIT 1 FOR UPDATE',
+      [referredUserId]
+    );
+
+    let refUse = null;
+    if (useRows.length === 0) {
+      const useId = uuidv4();
+      await connection.query(
+        `INSERT INTO referral_uses (id, referrer_id, referred_user_id, referral_code, status, offers_completed_count) 
+         VALUES (?, ?, ?, ?, 'PENDING', 0)`,
+        [useId, referrerId, referredUserId, referrerCode]
+      );
+      const [newUseRows] = await connection.query('SELECT * FROM referral_uses WHERE id = ? LIMIT 1', [useId]);
+      refUse = newUseRows[0];
+    } else {
+      refUse = useRows[0];
+    }
+
+    if (refUse.status !== 'PENDING') {
+      await connection.rollback();
+      return; // Already rewarded
+    }
+
+    // Mark as rewarded
+    await connection.query(
+      'UPDATE referral_uses SET status = "REWARDED", rewarded_at = NOW() WHERE id = ?',
+      [refUse.id]
+    );
+
+    const bonusCoins = parseFloat(settings.referrer_coins || settings.bonus_coins || 100);
+    await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [bonusCoins, referrerId]);
+
+    const transId = uuidv4();
+    await connection.query(
+      `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at) 
+       VALUES (?, ?, ?, 'CREDIT', 'REFERRAL_BONUS', ?, ?, NOW())`,
+      [transId, referrerId, bonusCoins, 'Referral Bonus (Friend made their first withdrawal)', refUse.id]
+    );
+
+    await sendNotification(
+      referrerId,
+      'Referral Bonus Claimed! 🎉',
+      `You received ${bonusCoins.toFixed(0)} coins because your referred friend made their first withdrawal!`
+    );
+
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback();
+    console.error('❌ Error in processFirstWithdrawalReferral:', err.message);
+  } finally {
+    connection.release();
+  }
+}

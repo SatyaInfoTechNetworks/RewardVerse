@@ -53,7 +53,8 @@ export const createContest = async (req, res) => {
       slug = '', banner_image = '', prize_text = '',
       allow_free_entry = true, allow_ad_entry = true,
       max_ad_entries_per_day = 3, allow_coins_entry = false,
-      ticket_coins_cost = 0, max_tickets_per_user = 10
+      ticket_coins_cost = 0, max_tickets_per_user = 10,
+      ad_entry_cooldown = 0
     } = req.body;
 
     if (!title || !type || !start_time || !end_time) {
@@ -64,8 +65,8 @@ export const createContest = async (req, res) => {
 
     const contestId = uuidv4();
     await connection.query(
-      `INSERT INTO contests (id, title, description, type, start_time, end_time, max_entries_per_day, total_winners, status, created_at, slug, banner_image, prize_text, allow_free_entry, allow_ad_entry, max_ad_entries_per_day, allow_coins_entry, ticket_coins_cost, max_tickets_per_user)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO contests (id, title, description, type, start_time, end_time, max_entries_per_day, total_winners, status, created_at, slug, banner_image, prize_text, allow_free_entry, allow_ad_entry, max_ad_entries_per_day, allow_coins_entry, ticket_coins_cost, max_tickets_per_user, ad_entry_cooldown)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         contestId, title, description || '', type, start_time, end_time, parseInt(max_entries_per_day), parseInt(total_winners),
         slug || '', banner_image || '', prize_text || '',
@@ -74,7 +75,8 @@ export const createContest = async (req, res) => {
         parseInt(max_ad_entries_per_day !== undefined ? max_ad_entries_per_day : 3),
         allow_coins_entry !== undefined ? Boolean(allow_coins_entry) : false,
         parseFloat(ticket_coins_cost !== undefined ? ticket_coins_cost : 0),
-        parseInt(max_tickets_per_user !== undefined ? max_tickets_per_user : 10)
+        parseInt(max_tickets_per_user !== undefined ? max_tickets_per_user : 10),
+        parseInt(ad_entry_cooldown !== undefined ? ad_entry_cooldown : 0)
       ]
     );
 
@@ -112,7 +114,8 @@ export const updateContest = async (req, res) => {
       slug = '', banner_image = '', prize_text = '',
       allow_free_entry = true, allow_ad_entry = true,
       max_ad_entries_per_day = 3, allow_coins_entry = false,
-      ticket_coins_cost = 0, max_tickets_per_user = 10
+      ticket_coins_cost = 0, max_tickets_per_user = 10,
+      ad_entry_cooldown = 0
     } = req.body;
 
     await connection.beginTransaction();
@@ -126,7 +129,7 @@ export const updateContest = async (req, res) => {
     await connection.query(
       `UPDATE contests 
        SET title=?, description=?, start_time=?, end_time=?, max_entries_per_day=?, total_winners=?, status=?,
-           slug=?, banner_image=?, prize_text=?, allow_free_entry=?, allow_ad_entry=?, max_ad_entries_per_day=?, allow_coins_entry=?, ticket_coins_cost=?, max_tickets_per_user=?
+           slug=?, banner_image=?, prize_text=?, allow_free_entry=?, allow_ad_entry=?, max_ad_entries_per_day=?, allow_coins_entry=?, ticket_coins_cost=?, max_tickets_per_user=?, ad_entry_cooldown=?
        WHERE id=?`,
       [
         title, description || '', start_time, end_time, parseInt(max_entries_per_day), parseInt(total_winners), status || 'ACTIVE',
@@ -137,6 +140,7 @@ export const updateContest = async (req, res) => {
         allow_coins_entry !== undefined ? Boolean(allow_coins_entry) : false,
         parseFloat(ticket_coins_cost !== undefined ? ticket_coins_cost : 0),
         parseInt(max_tickets_per_user !== undefined ? max_tickets_per_user : 10),
+        parseInt(ad_entry_cooldown !== undefined ? ad_entry_cooldown : 0),
         contestId
       ]
     );
@@ -186,16 +190,55 @@ export const deleteContest = async (req, res) => {
 export const getContestEntries = async (req, res) => {
   try {
     const contestId = req.params.id;
-    const query = `
-      SELECT ce.id, ce.entries_count, ce.entry_source, ce.created_at,
-             u.name as user_name, u.email as user_email, u.user_id as user_public_id, u.id as user_internal_id
-      FROM contest_entries ce
-      JOIN users u ON ce.user_id = u.id
-      WHERE ce.contest_id = ?
-      ORDER BY ce.entries_count DESC, ce.created_at DESC
-    `;
-    const [entries] = await pool.query(query, [contestId]);
-    res.json({ success: true, entries });
+    const [contestRows] = await pool.query('SELECT * FROM contests WHERE id = ?', [contestId]);
+    if (contestRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Contest not found' });
+    }
+    const contest = contestRows[0];
+
+    if (contest.type === 'LUCKY_DRAW') {
+      const query = `
+        SELECT ce.id, ce.entries_count, ce.entry_source, ce.created_at,
+               u.name as user_name, u.email as user_email, u.user_id as user_public_id, u.id as user_internal_id
+        FROM contest_entries ce
+        JOIN users u ON ce.user_id = u.id
+        WHERE ce.contest_id = ?
+        ORDER BY ce.entries_count DESC, ce.created_at DESC
+      `;
+      const [entries] = await pool.query(query, [contestId]);
+      res.json({ success: true, entries });
+    } else {
+      let scoreSubquery = '';
+      let subQueryParams = [];
+      if (contest.type === 'REFERRAL_CONTEST') {
+        scoreSubquery = `
+          SELECT COUNT(*) 
+          FROM referral_uses 
+          WHERE referrer_id = cp.user_id AND created_at > cp.joined_at AND created_at BETWEEN ? AND ?
+        `;
+        subQueryParams = [contest.start_time, contest.end_time];
+      } else {
+        scoreSubquery = `
+          SELECT COALESCE(SUM(amount), 0) 
+          FROM transactions 
+          WHERE user_id = cp.user_id AND type = 'CREDIT' AND source IN ('OFFER', 'TASK', 'WATCH_VIDEO', 'VIDEO_AD', 'OFFER_COMPLETION') AND created_at > cp.joined_at AND created_at BETWEEN ? AND ?
+        `;
+        subQueryParams = [contest.start_time, contest.end_time];
+      }
+
+      const query = `
+        SELECT cp.id, cp.joined_at as created_at,
+               (${scoreSubquery}) as entries_count,
+               'LEADERBOARD' as entry_source,
+               u.name as user_name, u.email as user_email, u.user_id as user_public_id, u.id as user_internal_id
+        FROM contest_participants cp
+        JOIN users u ON cp.user_id = u.id
+        WHERE cp.contest_id = ?
+        ORDER BY entries_count DESC, cp.joined_at ASC
+      `;
+      const [entries] = await pool.query(query, [...subQueryParams, contestId]);
+      res.json({ success: true, entries });
+    }
   } catch (error) {
     console.error('Admin Get Entries Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -526,6 +569,7 @@ export const getActiveContestsUser = async (req, res) => {
         allowCoinsEntry: Boolean(c.allow_coins_entry),
         ticketCoinsCost: parseFloat(c.ticket_coins_cost || 0),
         maxTicketsPerUser: parseInt(c.max_tickets_per_user || 10),
+        ad_entry_cooldown: parseInt(c.ad_entry_cooldown || 0),
         rewards: rewards.map(r => ({
           position: r.reward_position,
           type: r.reward_type,
@@ -583,6 +627,7 @@ export const getContestDetailUser = async (req, res) => {
     let adEntriesLeftToday = c.allow_ad_entry ? c.max_ad_entries_per_day : 0;
     let overallEntriesLeft = c.max_tickets_per_user;
     let myScore = 0;
+    let adEntryCooldownRemaining = 0;
 
     if (userId) {
       if (isRaffle) {
@@ -616,6 +661,19 @@ export const getContestDetailUser = async (req, res) => {
         );
         const todayAds = parseInt(adRows[0]?.tickets || 0);
         adEntriesLeftToday = c.allow_ad_entry ? Math.max(0, c.max_ad_entries_per_day - todayAds) : 0;
+
+        // Check if there is an active cooldown from the last ad entry
+        if (c.allow_ad_entry && c.ad_entry_cooldown > 0) {
+          const [lastAdEntryRows] = await pool.query(
+            "SELECT updated_at FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' LIMIT 1",
+            [contestId, userId]
+          );
+          if (lastAdEntryRows.length > 0) {
+            const lastAdTime = new Date(lastAdEntryRows[0].updated_at).getTime();
+            const elapsedSeconds = Math.floor((Date.now() - lastAdTime) / 1000);
+            adEntryCooldownRemaining = Math.max(0, c.ad_entry_cooldown - elapsedSeconds);
+          }
+        }
 
         // Total sweepstakes ticket limit per user
         overallEntriesLeft = Math.max(0, c.max_tickets_per_user - myTickets);
@@ -681,6 +739,8 @@ export const getContestDetailUser = async (req, res) => {
         allowCoinsEntry: Boolean(c.allow_coins_entry),
         ticketCoinsCost: parseFloat(c.ticket_coins_cost || 0),
         maxTicketsPerUser: parseInt(c.max_tickets_per_user || 10),
+        ad_entry_cooldown: parseInt(c.ad_entry_cooldown || 0),
+        adEntryCooldownRemaining,
         totalEntries,
         myTickets,
         entriesLeftToday,
@@ -745,6 +805,22 @@ export const enterContestUser = async (req, res) => {
 
       const today = new Date().toISOString().split('T')[0];
 
+      // Enforce daily combined limit (max_entries_per_day)
+      if (contest.max_entries_per_day > 0) {
+        const [todayRows] = await connection.query(
+          'SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND DATE(created_at) = ?',
+          [contestId, userId, today]
+        );
+        const todayEntries = parseInt(todayRows[0]?.tickets || 0);
+        if (todayEntries >= contest.max_entries_per_day) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `Daily limit reached! You can only get up to ${contest.max_entries_per_day} tickets per day for this draw.`
+          });
+        }
+      }
+
       if (source === 'FREE') {
         if (!contest.allow_free_entry) {
           await connection.rollback();
@@ -765,6 +841,26 @@ export const enterContestUser = async (req, res) => {
         if (!contest.allow_ad_entry) {
           await connection.rollback();
           return res.status(400).json({ success: false, message: 'Ad ticket entry is not enabled for this draw.' });
+        }
+
+        // Check ad entry cooldown
+        if (contest.ad_entry_cooldown > 0) {
+          const [lastAdEntryRows] = await connection.query(
+            "SELECT updated_at FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' LIMIT 1",
+            [contestId, userId]
+          );
+          if (lastAdEntryRows.length > 0) {
+            const lastAdTime = new Date(lastAdEntryRows[0].updated_at).getTime();
+            const elapsedSeconds = Math.floor((Date.now() - lastAdTime) / 1000);
+            const remaining = contest.ad_entry_cooldown - elapsedSeconds;
+            if (remaining > 0) {
+              await connection.rollback();
+              return res.status(400).json({ 
+                success: false, 
+                message: `Ad entry is on cooldown. Please wait ${remaining} more seconds.` 
+              });
+            }
+          }
         }
 
         const [todayAdRows] = await connection.query(

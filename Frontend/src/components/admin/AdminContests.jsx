@@ -32,7 +32,8 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
     max_ad_entries_per_day: 3,
     allow_coins_entry: false,
     ticket_coins_cost: 0,
-    max_tickets_per_user: 10
+    max_tickets_per_user: 10,
+    ad_entry_cooldown: 0
   });
 
   const fetchContests = async () => {
@@ -214,7 +215,8 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
       max_ad_entries_per_day: 3,
       allow_coins_entry: false,
       ticket_coins_cost: 0,
-      max_tickets_per_user: 10
+      max_tickets_per_user: 10,
+      ad_entry_cooldown: 0
     });
     setSelectedContest(null);
   };
@@ -247,7 +249,8 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
       max_ad_entries_per_day: contest.max_ad_entries_per_day !== undefined ? contest.max_ad_entries_per_day : 3,
       allow_coins_entry: contest.allow_coins_entry !== undefined ? Boolean(contest.allow_coins_entry) : false,
       ticket_coins_cost: contest.ticket_coins_cost !== undefined ? contest.ticket_coins_cost : 0,
-      max_tickets_per_user: contest.max_tickets_per_user !== undefined ? contest.max_tickets_per_user : 10
+      max_tickets_per_user: contest.max_tickets_per_user !== undefined ? contest.max_tickets_per_user : 10,
+      ad_entry_cooldown: contest.ad_entry_cooldown !== undefined ? contest.ad_entry_cooldown : 0
     });
     setActiveView('edit');
   };
@@ -326,7 +329,7 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
                 <tr className="text-xs text-muted uppercase">
                   <th className="pl-4">Contest Title</th>
                   <th>Type</th>
-                  <th className="text-center">Active Entries</th>
+                  <th className="text-center">Participation / Tickets</th>
                   <th className="text-center">Total Winners</th>
                   <th>Time Range</th>
                   <th className="text-center">Status</th>
@@ -334,46 +337,63 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
                 </tr>
               </thead>
               <tbody>
-                {contests.map(c => (
-                  <tr key={c.id} className="text-sm">
-                    <td className="pl-4">
-                      <div className="font-weight-bold text-dark">{c.title}</div>
-                      <div className="text-xs text-muted" style={{ maxWidth: '280px', whiteSpace: 'normal' }}>{c.description || 'No description provided.'}</div>
-                    </td>
-                    <td>
-                      <span className={`badge badge-${c.type === 'LUCKY_DRAW' ? 'primary' : c.type === 'REFERRAL_CONTEST' ? 'warning' : 'success'} px-2 py-1`}>
-                        {c.type === 'LUCKY_DRAW' ? '🎟️ Lucky Draw' : c.type === 'REFERRAL_CONTEST' ? '👥 Referral' : '⚔️ Earnings Battle'}
-                      </span>
-                    </td>
-                    <td className="text-center font-weight-bold">
-                      <span className="badge badge-light border p-2">{c.total_entries} <span className="text-xs font-normal text-muted">tickets</span></span>
-                    </td>
-                    <td className="text-center font-weight-black text-warning">
-                      {c.total_winners} Winners
-                    </td>
-                    <td className="text-xs text-muted">
-                      <div><Clock size={10} className="mr-1" /> {new Date(c.start_time).toLocaleDateString()} {new Date(c.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                      <div className="mt-1 text-danger font-weight-bold"><Clock size={10} className="mr-1" /> {new Date(c.end_time).toLocaleDateString()} {new Date(c.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                    </td>
-                    <td className="text-center">
-                      <span className={`badge badge-${c.status === 'ACTIVE' ? 'success' : 'secondary'} px-2 py-1`}>
-                        {c.status}
-                      </span>
-                    </td>
-                    <td className="text-right pr-4">
-                      <div className="btn-group">
-                        <button className="btn btn-outline-primary btn-xs font-weight-bold mr-2 px-3 rounded-pill" onClick={() => handleEditClick(c)}>Edit</button>
-                        <button className="btn btn-outline-info btn-xs font-weight-bold mr-2 px-3 rounded-pill" onClick={() => handleViewEntries(c)}>Tickets ({c.total_participants})</button>
-                        {c.status === 'ACTIVE' ? (
-                          <button className="btn btn-warning btn-xs font-weight-bold text-dark mr-2 px-3 rounded-pill" onClick={() => handleDrawWinners(c)}>Draw Matrix</button>
+                {contests.map(c => {
+                  const isExpired = new Date(c.end_time).getTime() < Date.now();
+                  return (
+                    <tr key={c.id} className="text-sm">
+                      <td className="pl-4">
+                        <div className="font-weight-bold text-dark">{c.title}</div>
+                        <div className="text-xs text-muted" style={{ maxWidth: '280px', whiteSpace: 'normal' }}>{c.description || 'No description provided.'}</div>
+                      </td>
+                      <td>
+                        <span className={`badge badge-${c.type === 'LUCKY_DRAW' ? 'primary' : c.type === 'REFERRAL_CONTEST' ? 'warning' : 'success'} px-2 py-1`}>
+                          {c.type === 'LUCKY_DRAW' ? '🎟️ Lucky Draw' : c.type === 'REFERRAL_CONTEST' ? '👥 Referral' : '⚔️ Earnings Battle'}
+                        </span>
+                      </td>
+                      <td className="text-center font-weight-bold">
+                        {c.type === 'LUCKY_DRAW' ? (
+                          <span className="badge badge-light border p-2">{c.total_entries} <span className="text-xs font-normal text-muted">tickets</span></span>
                         ) : (
-                          <button className="btn btn-success btn-xs font-weight-bold mr-2 px-3 rounded-pill" onClick={() => handleViewWinners(c)}>Winners Log</button>
+                          <span className="badge badge-light border p-2">{c.total_participants} <span className="text-xs font-normal text-muted">joined</span></span>
                         )}
-                        <button className="btn btn-outline-danger btn-xs font-weight-bold px-3 rounded-pill" onClick={() => handleDeleteContest(c.id)}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="text-center font-weight-black text-warning">
+                        {c.total_winners} Winners
+                      </td>
+                      <td className="text-xs text-muted">
+                        <div><Clock size={10} className="mr-1" /> {new Date(c.start_time).toLocaleDateString()} {new Date(c.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="mt-1 text-danger font-weight-bold"><Clock size={10} className="mr-1" /> {new Date(c.end_time).toLocaleDateString()} {new Date(c.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                      </td>
+                      <td className="text-center">
+                        {c.status === 'ACTIVE' ? (
+                          isExpired ? (
+                            <span className="badge badge-warning px-2 py-1"><i className="fas fa-hourglass-end mr-1"></i> Draw Pending</span>
+                          ) : (
+                            <span className="badge badge-success px-2 py-1"><i className="fas fa-play mr-1"></i> Running</span>
+                          )
+                        ) : c.status === 'COMPLETED' ? (
+                          <span className="badge badge-secondary px-2 py-1"><i className="fas fa-flag-checkered mr-1"></i> Concluded</span>
+                        ) : (
+                          <span className="badge badge-danger px-2 py-1">🚫 {c.status}</span>
+                        )}
+                      </td>
+                      <td className="text-right pr-4">
+                        <div className="btn-group">
+                          <button className="btn btn-outline-primary btn-xs font-weight-bold mr-2 px-3 rounded-pill" onClick={() => handleEditClick(c)}>Edit</button>
+                          <button className="btn btn-outline-info btn-xs font-weight-bold mr-2 px-3 rounded-pill" onClick={() => handleViewEntries(c)}>
+                            {c.type === 'LUCKY_DRAW' ? `Tickets (${c.total_entries})` : `Leaderboard (${c.total_participants})`}
+                          </button>
+                          {c.status === 'ACTIVE' ? (
+                            <button className="btn btn-warning btn-xs font-weight-bold text-dark mr-2 px-3 rounded-pill" onClick={() => handleDrawWinners(c)}>Draw Matrix</button>
+                          ) : (
+                            <button className="btn btn-success btn-xs font-weight-bold mr-2 px-3 rounded-pill" onClick={() => handleViewWinners(c)}>Winners Log</button>
+                          )}
+                          <button className="btn btn-outline-danger btn-xs font-weight-bold px-3 rounded-pill" onClick={() => handleDeleteContest(c.id)}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {contests.length === 0 && (
                   <tr>
                     <td colSpan={7} className="text-center text-muted p-5">No published promotional contests found. Launch one above!</td>
@@ -518,10 +538,16 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
 
                       <div className="row">
                         {contestForm.allow_ad_entry && (
-                          <div className="col-6 form-group mb-3">
-                            <label className="text-muted text-xs font-weight-bold mb-1">Maximum Ad Tickets Allowed Per Day</label>
-                            <input type="number" className="form-control" value={contestForm.max_ad_entries_per_day} onChange={e => setContestForm({ ...contestForm, max_ad_entries_per_day: parseInt(e.target.value || 3) })} />
-                          </div>
+                          <>
+                            <div className="col-6 form-group mb-3">
+                              <label className="text-muted text-xs font-weight-bold mb-1">Maximum Ad Tickets Allowed Per Day</label>
+                              <input type="number" className="form-control" value={contestForm.max_ad_entries_per_day} onChange={e => setContestForm({ ...contestForm, max_ad_entries_per_day: parseInt(e.target.value || 3) })} />
+                            </div>
+                            <div className="col-6 form-group mb-3">
+                              <label className="text-muted text-xs font-weight-bold mb-1">Ad Entry Cooldown (seconds)</label>
+                              <input type="number" className="form-control" value={contestForm.ad_entry_cooldown || 0} onChange={e => setContestForm({ ...contestForm, ad_entry_cooldown: parseInt(e.target.value || 0) })} />
+                            </div>
+                          </>
                         )}
                         
                         <div className="col-6 d-flex flex-column mb-3">
@@ -618,8 +644,14 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
         <div className="card card-white shadow-none border rounded-lg">
           <div className="card-header border-0 bg-transparent d-flex justify-content-between align-items-center">
             <div>
-              <h3 className="card-title font-weight-bold text-dark mb-0">Entries Audit: {selectedContest.title}</h3>
-              <p className="text-xs text-muted mb-0">Raffle chances scale directly based on total ticket entries.</p>
+              <h3 className="card-title font-weight-bold text-dark mb-0">
+                {selectedContest.type === 'LUCKY_DRAW' ? 'Entries Audit' : 'Leaderboard Standings'}: {selectedContest.title}
+              </h3>
+              <p className="text-xs text-muted mb-0">
+                {selectedContest.type === 'LUCKY_DRAW' 
+                  ? 'Raffle chances scale directly based on total ticket entries.' 
+                  : 'Participants are ranked in real-time based on their battle scores.'}
+              </p>
             </div>
             <button className="btn btn-xs btn-outline-secondary rounded-pill px-3" onClick={() => handleViewEntries(selectedContest)}><RefreshCw size={12} className="mr-1" /> Refresh</button>
           </div>
@@ -629,13 +661,13 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
                 <tr className="text-xs text-muted uppercase">
                   <th className="pl-4">Participant Details</th>
                   <th>Entry Method</th>
-                  <th className="text-center">Tickets Earned</th>
-                  <th className="text-center">Raffle Probability Weight</th>
-                  <th>Submitted Date</th>
+                  <th className="text-center">{selectedContest.type === 'LUCKY_DRAW' ? 'Tickets Earned' : selectedContest.type === 'REFERRAL_CONTEST' ? 'Referrals Count' : 'Coins Earned'}</th>
+                  <th className="text-center">{selectedContest.type === 'LUCKY_DRAW' ? 'Raffle Probability Weight' : 'Current Rank'}</th>
+                  <th>{selectedContest.type === 'LUCKY_DRAW' ? 'Submitted Date' : 'Registration Date'}</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map(e => {
+                {entries.map((e, idx) => {
                   const totalTickets = entries.reduce((sum, item) => sum + parseInt(item.entries_count || 0), 0);
                   const probability = totalTickets > 0 ? ((parseInt(e.entries_count) / totalTickets) * 100).toFixed(1) : 0;
                   
@@ -646,13 +678,25 @@ export default function AdminContests({ getHeaders, showNotice, API_BASE }) {
                         <div className="text-xs text-muted">ID: {e.user_public_id} | Email: {e.user_email}</div>
                       </td>
                       <td>
-                        <span className="badge badge-light border px-2 py-1">{e.entry_source}</span>
+                        <span className="badge badge-light border px-2 py-1">
+                          {selectedContest.type === 'LUCKY_DRAW' ? e.entry_source : 'Leaderboard'}
+                        </span>
                       </td>
                       <td className="text-center font-weight-bold text-success">
-                        {e.entries_count} Tickets
+                        {selectedContest.type === 'LUCKY_DRAW' ? (
+                          `${e.entries_count} Tickets`
+                        ) : selectedContest.type === 'REFERRAL_CONTEST' ? (
+                          `${e.entries_count} Referrals`
+                        ) : (
+                          `₹${parseFloat(e.entries_count || 0).toFixed(2)}`
+                        )}
                       </td>
                       <td className="text-center">
-                        <strong className="text-primary">{probability}% Chance</strong>
+                        {selectedContest.type === 'LUCKY_DRAW' ? (
+                          <strong className="text-primary">{probability}% Chance</strong>
+                        ) : (
+                          <span className="badge badge-indigo px-3 py-1 font-weight-bold">Rank #{idx + 1}</span>
+                        )}
                       </td>
                       <td className="text-xs text-muted">
                         {new Date(e.created_at).toLocaleString()}

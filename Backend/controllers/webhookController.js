@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { sendNotification } from '../utils/notifications.js';
 import { sendAdminTelegramAlert } from '../utils/telegram.js';
-import { checkAndRewardReferrer } from '../utils/referralHelper.js';
 
 // Constant-time string comparison to prevent timing attacks
 function safeCompare(a, b) {
@@ -91,8 +90,8 @@ async function sendBeautifulTelegramAlert(emoji, title, user, amount, details = 
     const offerName = details['Offer Name'] || details['Offer'] || title || 'External Offer';
     text += `🔥 <b>Offer Name:</b> ${offerName}\n`;
 
-    const providerName = providerKey === 'generic' 
-      ? 'Rewardverse Offerwall' 
+    const providerName = providerKey === 'generic'
+      ? 'Rewardverse Offerwall'
       : providerKey.toUpperCase().replace('_', ' ');
     text += `📡 <b>Offerwall:</b> ${providerName}\n`;
 
@@ -105,7 +104,7 @@ async function sendBeautifulTelegramAlert(emoji, title, user, amount, details = 
     // 6. Transaction Details
     const transId = details['Transaction ID'] || details['ID'] || 'N/A';
     text += `🆔 <b>Transaction ID:</b> <code>${transId}</code>\n`;
-    
+
     if (details['Reason']) {
       text += `🚨 <b>Reason:</b> <code>${details['Reason']}</code>\n`;
     }
@@ -113,7 +112,7 @@ async function sendBeautifulTelegramAlert(emoji, title, user, amount, details = 
     // 7. Explicit image preview link
     text += `🖼️ <b>Offerwall Image:</b> <a href="${imageUrl}">View Brand Logo</a>\n\n`;
 
-    text += `⚡ <b>Powered by Rewardly</b>\n`;
+    text += `⚡ <b>Powered by Rewardverse</b>\n`;
     text += `🕒 <b>System Log Time:</b> <code>${new Date().toISOString()}</code>`;
 
     await sendAdminTelegramAlert(text).catch(err => console.error('[TelegramAlert] Failed:', err.message));
@@ -128,7 +127,8 @@ async function sendBeautifulTelegramAlert(emoji, title, user, amount, details = 
 export const handlePostback = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const { click_id, tier_title } = req.body || req.query;
+    const click_id = req.query.click_id || req.body.click_id;
+    const tier_title = req.query.tier_title || req.body.tier_title;
 
     if (!click_id || !tier_title) {
       return res.status(400).json({ success: false, message: 'Missing click_id or tier_title' });
@@ -148,7 +148,7 @@ export const handlePostback = async (req, res) => {
 
     const progress = progressRows[0];
     const { offer_id, user_id } = progress;
-    
+
     // Resolve user_id (it could be stored as public hex, Firebase UID, or UUID) to primary UUID
     const [uRows] = await connection.query(
       'SELECT id FROM users WHERE id = ? OR user_id = ? OR uid = ? LIMIT 1',
@@ -160,18 +160,22 @@ export const handlePostback = async (req, res) => {
     }
     const resolvedUserId = uRows[0].id;
 
+    // Fetch offer title for the transaction ledger description
+    const [offerRows] = await connection.query('SELECT title FROM offers WHERE id = ? LIMIT 1', [offer_id]);
+    const offerTitle = offerRows.length > 0 ? offerRows[0].title : 'Offer';
+
     let completedTiers = [];
     if (progress.completed_tiers) {
       try {
-        completedTiers = typeof progress.completed_tiers === 'string' 
-          ? JSON.parse(progress.completed_tiers) 
+        completedTiers = typeof progress.completed_tiers === 'string'
+          ? JSON.parse(progress.completed_tiers)
           : progress.completed_tiers;
       } catch (e) {
         completedTiers = [];
       }
     }
 
-    const isAlreadyCompleted = completedTiers.some(ct => 
+    const isAlreadyCompleted = completedTiers.some(ct =>
       ct.title.toLowerCase().trim() === tier_title.toLowerCase().trim()
     );
 
@@ -220,10 +224,11 @@ export const handlePostback = async (req, res) => {
 
     const transId = uuidv4();
     const displayTitle = tier.app_tier_title || tier.tier_title;
+    const descriptionText = `${offerTitle} : ${displayTitle}`;
     await connection.query(
       `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at) 
        VALUES (?, ?, ?, 'CREDIT', 'OFFER', ?, ?, NOW())`,
-      [transId, resolvedUserId, reward, `Completed: ${displayTitle}`, click_id]
+      [transId, resolvedUserId, reward, descriptionText, click_id]
     );
 
     await connection.commit();
@@ -234,7 +239,7 @@ export const handlePostback = async (req, res) => {
       `You earned ${reward.toFixed(0)} coins for completing ${displayTitle}.`
     );
 
-    processReferralRewards(resolvedUserId, reward, offer_id).catch(err => 
+    processReferralRewards(resolvedUserId, reward, offer_id).catch(err =>
       console.error('Error processing referral rewards:', err.message)
     );
 
@@ -424,7 +429,7 @@ export const handlePubscaleChargeback = async (req, res) => {
 export const handleCpxResearch = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const CPX_SECURE_HASH = "yyZpfQ6EDvthdxvFYbbhJHfED6FhH1N6";
+    const CPX_SECURE_HASH = "c61DO2Aq2vD6kZZ9OlLZzNtiXPoDrh2R";
     const { status, trans_id, user_id, amount_local = 0, hash, type = '', offer_id = '' } = req.query;
 
     console.log('[CPX_RESEARCH] Incoming:', req.query);
@@ -793,7 +798,7 @@ export const handleOpinionUniverse = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const OPINION_UNIVERSE_TOKEN = "edeb747df552564cf19058001f70a64d0f7c51347c1d6a5f2da3fb669995a2c5";
-    
+
     console.log('📝 [OPINION_UNIVERSE] Incoming webhook request:', {
       ip: req.ip,
       query: req.query,
@@ -811,13 +816,6 @@ export const handleOpinionUniverse = async (req, res) => {
     const gaid = req.query.gaid || '';
     const signature = req.query.SIG || '';
 
-    // Check placeholder / test callback
-    const isTestCallback = (user_id.includes('{') || String(payoutParam).includes('{'));
-    if (isTestCallback) {
-      console.log('⚠️ [OPINION_UNIVERSE] Bypassing test callback placeholder. Returning "1"');
-      return res.send('1');
-    }
-
     if (transaction_id.includes('{') || !transaction_id) {
       transaction_id = `OU_${user_id}_${offer_id}_${payoutParam}_${Date.now()}`;
       console.log(`ℹ️ [OPINION_UNIVERSE] Generated synthetic transaction ID: ${transaction_id}`);
@@ -830,20 +828,75 @@ export const handleOpinionUniverse = async (req, res) => {
 
     // Signature check
     if (signature) {
-      const expectedSig = crypto
+      const expectedHmac = crypto
         .createHmac('sha256', OPINION_UNIVERSE_TOKEN)
         .update(transaction_id)
         .digest('hex');
 
-      console.log(`🔒 [OPINION_UNIVERSE] Verifying signature. Received: ${signature}, Expected: ${expectedSig}`);
+      const params = { ...req.query };
+      delete params.SIG;
+      delete params.sig;
 
-      if (!safeCompare(signature, expectedSig)) {
+      const sortedKeys = Object.keys(params).sort();
+
+      // Try RFC 3986 (%20 for spaces)
+      const queryPartsRFC3986 = sortedKeys.map(key => {
+        return `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`;
+      });
+      const queryStringRFC3986 = queryPartsRFC3986.join('&');
+      const expectedSig3986 = crypto
+        .createHash('sha256')
+        .update(queryStringRFC3986 + OPINION_UNIVERSE_TOKEN)
+        .digest('hex');
+
+      // Try RFC 1738 (+ for spaces)
+      const queryStringRFC1738 = queryStringRFC3986.replace(/%20/g, '+');
+      const expectedSig1738 = crypto
+        .createHash('sha256')
+        .update(queryStringRFC1738 + OPINION_UNIVERSE_TOKEN)
+        .digest('hex');
+
+      // Try raw values (unencoded)
+      const queryPartsRaw = sortedKeys.map(key => `${key}=${params[key]}`);
+      const queryStringRaw = queryPartsRaw.join('&');
+      const expectedSigRaw = crypto
+        .createHash('sha256')
+        .update(queryStringRaw + OPINION_UNIVERSE_TOKEN)
+        .digest('hex');
+
+      console.log(`🔒 [OPINION_UNIVERSE] Verifying signature. Received: ${signature}`);
+      console.log(`🔒 [OPINION_UNIVERSE] Expected (HMAC-SHA256 of TransactionID): ${expectedHmac}`);
+      console.log(`🔒 [OPINION_UNIVERSE] Expected (RFC3986): ${expectedSig3986}`);
+
+      const match = safeCompare(signature.toLowerCase(), expectedHmac.toLowerCase()) ||
+        safeCompare(signature.toLowerCase(), expectedSig3986.toLowerCase()) ||
+        safeCompare(signature.toLowerCase(), expectedSig1738.toLowerCase()) ||
+        safeCompare(signature.toLowerCase(), expectedSigRaw.toLowerCase());
+
+      if (!match) {
         console.warn('❌ [OPINION_UNIVERSE] Signature Mismatch! Rejecting request with "0"');
         return res.status(403).send('0');
       }
       console.log('✅ [OPINION_UNIVERSE] Signature verified successfully.');
     } else {
       console.log('ℹ️ [OPINION_UNIVERSE] No signature SIG provided. Skipping verification.');
+    }
+
+    // Check placeholder / test callback AFTER verifying the signature
+    const isTestCallback = (user_id.includes('{') || String(payoutParam).includes('{'));
+    if (isTestCallback) {
+      console.log('⚠️ [OPINION_UNIVERSE] Test callback placeholder identified and validated. Sending test Telegram alert and returning "1"');
+      const mockUser = {
+        name: 'TestUser',
+        email: 'test@rewardverse.com',
+        user_id: 'RV_TEST_ID'
+      };
+      await sendBeautifulTelegramAlert('✅', 'Opinion Universe Completion (TEST)', mockUser, parseFloat(payoutParam || 100), {
+        'Offer Name': offer_name,
+        'Offer ID': offer_id || 'N/A',
+        'Transaction ID': transaction_id
+      }).catch(console.error);
+      return res.send('1');
     }
 
     // Reversal case
@@ -864,7 +917,7 @@ export const handleOpinionUniverse = async (req, res) => {
           await connection.beginTransaction();
           await connection.query('UPDATE offer_completions SET status = "REVERSED" WHERE completion_id = ?', [transaction_id]);
           await connection.query('UPDATE users SET balance = balance - ? WHERE id = ?', [deduction, orig.user_id]);
-          
+
           const transId = uuidv4();
           await connection.query(
             `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at)
@@ -873,7 +926,7 @@ export const handleOpinionUniverse = async (req, res) => {
           );
           await connection.commit();
           console.log('✅ [OPINION_UNIVERSE] Database balance deducted and debit ledger written.');
-          
+
           sendNotification(orig.user_id, "Action Required: Points Reversed ❗", `Points for Opinion Universe '${offer_name}' were reversed.`).catch(console.error);
         } else {
           console.log('ℹ️ [OPINION_UNIVERSE] Transaction already reversed in database.');
@@ -907,7 +960,7 @@ export const handleOpinionUniverse = async (req, res) => {
 
     const reward = parseFloat(payoutParam || 0);
     const clientIp = ip_address || req.ip || 'unknown';
-    
+
     console.log(`💰 [OPINION_UNIVERSE] Crediting ${reward} coins to user ${user.name}`);
     await connection.query(
       `INSERT INTO offer_completions (completion_id, user_id, offer_id, provider, payout_coins, status, raw_payload, offer_name, goal_name, gaid, ip_address)
@@ -954,7 +1007,7 @@ export const handlePlaytimeAds = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const params = { ...req.query, ...req.body };
-    
+
     // Log incoming Playtime Ads callback request
     console.log('🎮 [PLAYTIME_ADS] Incoming webhook request:', {
       ip: req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.ip,
@@ -1300,19 +1353,22 @@ export const handleOfferCompleted = async (req, res) => {
 };
 
 // =========================================================================
+// =========================================================================
 // HELPER: PROCESS REFERRAL REWARDS (Ledger Safe)
+// Called on every offer/task completion postback
 // =========================================================================
 async function processReferralRewards(referredUserId, rewardAmount, offerId) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    const [userRows] = await connection.query('SELECT referred_by FROM users WHERE id = ? LIMIT 1', [referredUserId]);
+    const [userRows] = await connection.query('SELECT referred_by, balance FROM users WHERE id = ? LIMIT 1', [referredUserId]);
     if (userRows.length === 0 || !userRows[0].referred_by) {
       await connection.rollback();
       return;
     }
     const referrerCode = userRows[0].referred_by;
+    const userBalance = parseFloat(userRows[0].balance || 0);
 
     const [referrerRows] = await connection.query(
       'SELECT id, name FROM users WHERE LOWER(referral_code) = LOWER(?) OR user_id = ? OR id = ? OR uid = ? LIMIT 1',
@@ -1325,10 +1381,35 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
     const referrerId = referrerRows[0].id;
 
     const [settingsRows] = await connection.query('SELECT * FROM referral_settings LIMIT 1');
-    const settings = settingsRows.length > 0 
-      ? settingsRows[0] 
-      : { bonus_coins: 10.00, commission_percent: 10, offers_required: 2 };
+    const settings = settingsRows.length > 0
+      ? settingsRows[0]
+      : { bonus_coins: 10.00, commission_percent: 10, offers_required: 2, reward_trigger: 'offers_completed', coin_threshold: 500, referrer_coins: 100 };
 
+    const trigger = settings.reward_trigger || 'offers_completed';
+    const commissionEnabled = settings.commission_enabled !== 0 && settings.commission_enabled !== false;
+
+    // If trigger is first_withdrawal, milestone bonus is handled in walletController — skip here
+    if (trigger === 'first_withdrawal') {
+      // Still give commission % on every offer completion if enabled
+      const commPercent = parseInt(settings.commission_percent);
+      if (commissionEnabled && commPercent > 0 && rewardAmount > 0) {
+        const commissionAmount = rewardAmount * (commPercent / 100);
+        if (commissionAmount > 0) {
+          await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [commissionAmount, referrerId]);
+          const transId = uuidv4();
+          await connection.query(
+            `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at) 
+             VALUES (?, ?, ?, 'CREDIT', 'REFERRAL', ?, ?, NOW())`,
+            [transId, referrerId, commissionAmount, `Commission (${commPercent}% of friend task reward)`, offerId]
+          );
+          await sendNotification(referrerId, "Referral Commission Earned!", `You earned ${commissionAmount.toFixed(1)} coins commission from your referred friend's task completion!`);
+        }
+      }
+      await connection.commit();
+      return;
+    }
+
+    // Ensure referral_uses record exists and track progress
     const [useRows] = await connection.query(
       'SELECT * FROM referral_uses WHERE referred_user_id = ? LIMIT 1 FOR UPDATE',
       [referredUserId]
@@ -1339,43 +1420,82 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
       const useId = uuidv4();
       await connection.query(
         `INSERT INTO referral_uses (id, referrer_id, referred_user_id, referral_code, status, offers_completed_count) 
-         VALUES (?, ?, ?, ?, 'PENDING', 0)`,
+         VALUES (?, ?, ?, ?, 'PENDING', 1)`,
         [useId, referrerId, referredUserId, referrerCode]
       );
-      
       const [newUseRows] = await connection.query('SELECT * FROM referral_uses WHERE id = ? LIMIT 1', [useId]);
       refUse = newUseRows[0];
     } else {
       refUse = useRows[0];
+      await connection.query(
+        'UPDATE referral_uses SET offers_completed_count = offers_completed_count + 1 WHERE id = ?',
+        [refUse.id]
+      );
+      refUse.offers_completed_count += 1;
     }
 
-    // Dynamic referral reward conditions (MIN_TASKS or LIFETIME_COINS)
-    await checkAndRewardReferrer(connection, referredUserId, 'MIN_TASKS', { incrementTasks: 1 });
-    await checkAndRewardReferrer(connection, referredUserId, 'LIFETIME_COINS', { incomingCoins: rewardAmount });
+    // Only fire milestone reward if still PENDING
+    if (refUse.status === 'PENDING') {
+      let milestoneReached = false;
+      let milestoneDescription = '';
 
-    const commPercent = parseInt(settings.commission_percent);
-    const isCommActive = settings.is_commission_active !== undefined ? Boolean(settings.is_commission_active) : true;
-    if (isCommActive && commPercent > 0) {
-      const commissionAmount = rewardAmount * (commPercent / 100);
+      if (trigger === 'offers_completed') {
+        const threshold = parseInt(settings.offers_required);
+        if (refUse.offers_completed_count >= threshold) {
+          milestoneReached = true;
+          milestoneDescription = `Referral Milestone Bonus (Friend completed ${threshold} tasks)`;
+        }
+      } else if (trigger === 'coin_threshold') {
+        // Recalculate total earnings of the referred user
+        const [earnRows] = await connection.query(
+          "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE user_id = ? AND type = 'CREDIT'",
+          [referredUserId]
+        );
+        const totalEarned = parseFloat(earnRows[0].total || 0);
+        const threshold = parseFloat(settings.coin_threshold || 500);
+        if (totalEarned >= threshold) {
+          milestoneReached = true;
+          milestoneDescription = `Referral Milestone Bonus (Friend earned ${threshold} coins)`;
+        }
+      }
 
-      if (commissionAmount > 0) {
+      if (milestoneReached) {
         await connection.query(
-          'UPDATE users SET balance = balance + ? WHERE id = ?',
-          [commissionAmount, referrerId]
+          'UPDATE referral_uses SET status = "REWARDED", rewarded_at = NOW() WHERE id = ?',
+          [refUse.id]
         );
 
+        const bonusCoins = parseFloat(settings.referrer_coins || settings.bonus_coins || 100);
+        await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [bonusCoins, referrerId]);
+
+        const transId = uuidv4();
+        await connection.query(
+          `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at) 
+           VALUES (?, ?, ?, 'CREDIT', 'REFERRAL_BONUS', ?, ?, NOW())`,
+          [transId, referrerId, bonusCoins, milestoneDescription, refUse.id]
+        );
+
+        await sendNotification(
+          referrerId,
+          "Referral Bonus Claimed!",
+          `You received ${bonusCoins.toFixed(0)} coins because ${milestoneDescription.toLowerCase()}!`
+        );
+      }
+    }
+
+    // Commission % on every offer completion regardless of trigger type
+    const commPercent = parseInt(settings.commission_percent);
+    if (commissionEnabled && commPercent > 0 && rewardAmount > 0) {
+      const commissionAmount = rewardAmount * (commPercent / 100);
+      if (commissionAmount > 0) {
+        await connection.query('UPDATE users SET balance = balance + ? WHERE id = ?', [commissionAmount, referrerId]);
         const transId = uuidv4();
         await connection.query(
           `INSERT INTO transactions (id, user_id, amount, type, source, description, reference_id, created_at) 
            VALUES (?, ?, ?, 'CREDIT', 'REFERRAL', ?, ?, NOW())`,
           [transId, referrerId, commissionAmount, `Commission (${commPercent}% of friend task reward)`, offerId]
         );
-
-        await sendNotification(
-          referrerId,
-          "Referral Commission Earned!",
-          `You earned ${commissionAmount.toFixed(1)} coins commission from your referred friend's task completion!`
-        );
+        await sendNotification(referrerId, "Referral Commission Earned!", `You earned ${commissionAmount.toFixed(1)} coins commission from your referred friend's task completion!`);
       }
     }
 
@@ -1388,6 +1508,7 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
   }
 }
 
+
 // =========================================================================
 // 13. TIMEWALL POSTBACK (GET/POST)
 // =========================================================================
@@ -1396,17 +1517,17 @@ export const handleTimewall = async (req, res) => {
   try {
     const TIMEWALL_SECRET = "e1bd718416cbd32f670bd4587a4f3313";
     const params = { ...req.query, ...req.body };
-    const { 
-      user_id: user_id_param, 
-      transaction_id, 
-      revenue: revenueParam = '0', 
-      reward: rewardParam = '0', 
-      hash, 
-      ip = '', 
-      type = 'credit', 
-      withdraw_id = '', 
-      reason = '', 
-      offer_name = 'Timewall Withdrawal' 
+    const {
+      user_id: user_id_param,
+      transaction_id,
+      revenue: revenueParam = '0',
+      reward: rewardParam = '0',
+      hash,
+      ip = '',
+      type = 'credit',
+      withdraw_id = '',
+      reason = '',
+      offer_name = 'Timewall Withdrawal'
     } = params;
 
     const clientIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || ip || 'unknown';

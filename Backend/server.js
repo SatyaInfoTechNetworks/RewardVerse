@@ -80,6 +80,7 @@ import {
   getAllTransactionsAdmin,
   updateUserBalance,
   updateUser,
+  deleteUserFingerprints,
   banUser,
   unbanUser,
   createOffer,
@@ -119,8 +120,7 @@ import {
   rejectProof,
   resetAllDailySpins,
   deleteUser,
-  deleteTransactionAdmin,
-  deleteDeviceFingerprint
+  deleteTransactionAdmin
 } from './controllers/adminController.js';
 
 import {
@@ -150,7 +150,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'https://rewardverse.satyainfotechnetworks.com',
-  'https://api-rewardverse.satyainfotechnetworks.com',
+  'https://rewardverse-api.satyainfotechnetworks.com',
   process.env.FRONTEND_URL,
   process.env.ADMIN_URL
 ].filter(Boolean);
@@ -311,10 +311,10 @@ app.get('/api/admin/transactions', authenticateAdmin, getAllTransactionsAdmin);
 app.delete('/api/admin/transactions/:id', authenticateAdmin, deleteTransactionAdmin);
 app.post('/api/admin/users/:id/balance', authenticateAdmin, updateUserBalance);
 app.put('/api/admin/users/:id', authenticateAdmin, updateUser);
+app.delete('/api/admin/users/:id/fingerprints', authenticateAdmin, deleteUserFingerprints);
 app.post('/api/admin/users/:id/ban', authenticateAdmin, banUser);
 app.post('/api/admin/users/:id/unban', authenticateAdmin, unbanUser);
 app.delete('/api/admin/users/:id', authenticateAdmin, deleteUser);
-app.delete('/api/admin/users/fingerprints/:id', authenticateAdmin, deleteDeviceFingerprint);
 
 // Offers Management
 app.get('/api/admin/offers', authenticateAdmin, listAdminOffers);

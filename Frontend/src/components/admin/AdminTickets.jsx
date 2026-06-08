@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, X, Clock, CheckCircle, AlertCircle, Search, ChevronLeft, Lock } from 'lucide-react';
 
 export default function AdminTickets({ getHeaders, showNotice, API_BASE }) {
@@ -11,6 +11,14 @@ export default function AdminTickets({ getHeaders, showNotice, API_BASE }) {
   const [closeOnSend, setCloseOnSend] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [thread]);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -142,27 +150,45 @@ export default function AdminTickets({ getHeaders, showNotice, API_BASE }) {
               ) : filtered.length === 0 ? (
                 <p className="text-muted text-center py-4">No tickets found.</p>
               ) : (
-                <div className="list-group" style={{ maxHeight: '520px', overflowY: 'auto' }}>
-                  {filtered.map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => openTicket(t)}
-                      className={`list-group-item list-group-item-action ${selectedTicket?.id === t.id ? 'active' : ''}`}
-                      style={{ borderRadius: '6px', marginBottom: '6px', textAlign: 'left' }}
-                    >
-                      <div className="d-flex w-100 justify-content-between align-items-start">
-                        <h6 className="mb-1 font-weight-bold" style={{ color: selectedTicket?.id === t.id ? '#fff' : '#212529', fontSize: '0.9rem' }}>{t.subject || 'No Subject'}</h6>
-                        <span className={`text-xs ${selectedTicket?.id === t.id ? 'text-white' : statusColor(t.status)}`} style={{ fontWeight: 600 }}>
-                          {t.status}
-                        </span>
-                      </div>
-                      <p className="mb-1 text-xs" style={{ color: selectedTicket?.id === t.id ? 'rgba(255,255,255,0.85)' : '#6c757d' }}>{t.user_email || 'Unknown User'}</p>
-                      <div className="d-flex justify-content-between text-xs" style={{ color: selectedTicket?.id === t.id ? 'rgba(255,255,255,0.7)' : '#adb5bd' }}>
-                        <span>ID: {t.user_public_id || 'N/A'}</span>
-                        <span>{new Date(t.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </button>
-                  ))}
+                <div className="list-group" style={{ maxHeight: '520px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {filtered.map(t => {
+                    const isSelected = selectedTicket?.id === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => openTicket(t)}
+                        className="list-group-item list-group-item-action border-0 shadow-sm"
+                        style={{
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          textAlign: 'left',
+                          borderLeft: isSelected ? '4px solid #4f46e5' : '4px solid transparent',
+                          background: isSelected ? '#eff6ff' : '#f8fafc',
+                          padding: '12px 16px',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div className="d-flex w-100 justify-content-between align-items-start">
+                          <h6 className="mb-1 font-weight-bold" style={{ color: '#1e293b', fontSize: '0.9rem' }}>
+                            {t.subject || 'No Subject'}
+                          </h6>
+                          <span 
+                            className={`badge ${t.status === 'OPEN' ? 'badge-warning' : t.status === 'REPLIED' ? 'badge-primary' : 'badge-secondary'} text-xs`}
+                            style={{ padding: '4px 8px', borderRadius: '4px' }}
+                          >
+                            {t.status}
+                          </span>
+                        </div>
+                        <p className="mb-1 text-xs text-muted" style={{ fontWeight: 500 }}>
+                          {t.user_email || 'Unknown User'}
+                        </p>
+                        <div className="d-flex justify-content-between text-xs text-muted" style={{ fontSize: '0.75rem' }}>
+                          <span>ID: {t.user_public_id || 'N/A'}</span>
+                          <span>{new Date(t.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -210,25 +236,73 @@ export default function AdminTickets({ getHeaders, showNotice, API_BASE }) {
                   👤 <strong>{selectedTicket.user_email}</strong> &bull; Public ID: <strong>{selectedTicket.user_public_id || 'N/A'}</strong> &mdash; Status: <span className={`font-weight-bold ${statusColor(selectedTicket.status)}`}>{selectedTicket.status}</span>
                 </div>
 
-                {/* Messages List */}
-                <div className="d-flex flex-column" style={{ gap: '14px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px', paddingBottom: '10px' }}>
+                {/* Messages List Container with custom styling */}
+                <div 
+                  className="d-flex flex-column" 
+                  style={{ 
+                    gap: '14px', 
+                    maxHeight: '420px', 
+                    overflowY: 'auto', 
+                    padding: '16px', 
+                    backgroundColor: '#f8fafc', 
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.03)'
+                  }}
+                >
                   {/* Original Inquiry */}
-                  <div className="p-3 bg-light rounded border align-self-start" style={{ maxWidth: '85%' }}>
-                    <p className="text-xs text-muted mb-2 font-weight-bold">
-                      📩 User &bull; {new Date(selectedTicket.created_at).toLocaleString()}
+                  <div 
+                    className="p-3 align-self-start shadow-sm" 
+                    style={{ 
+                      maxWidth: '75%', 
+                      background: '#ffffff', 
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '16px 16px 16px 4px'
+                    }}
+                  >
+                    <div className="d-flex align-items-center mb-1 text-xs text-muted font-weight-bold">
+                      <span className="badge badge-secondary mr-2">Client Inquiry</span>
+                      <span>{new Date(selectedTicket.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="text-sm m-0 text-dark" style={{ lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {selectedTicket.message}
                     </p>
-                    <p className="text-sm m-0 text-dark" style={{ lineHeight: 1.5 }}>{selectedTicket.message}</p>
                   </div>
 
                   {/* replies */}
                   {thread.map(r => {
                     const isAdmin = r.sender_type === 'ADMIN';
                     return (
-                      <div key={r.id} className={`p-3 rounded border align-self-${isAdmin ? 'end' : 'start'}`} style={{ maxWidth: '85%', background: isAdmin ? '#f1f3f9' : '#f8f9fa', borderLeft: isAdmin ? '3px solid var(--primary)' : '1px solid #dee2e6' }}>
-                        <p className="text-xs text-muted mb-2 font-weight-bold">
-                          {isAdmin ? '⚡ Admin' : '📩 User'} &bull; {new Date(r.created_at).toLocaleString()}
+                      <div 
+                        key={r.id} 
+                        className={`p-3 shadow-sm align-self-${isAdmin ? 'end' : 'start'}`} 
+                        style={{ 
+                          maxWidth: '75%', 
+                          background: isAdmin ? 'linear-gradient(135deg, #4f46e5, #3730a3)' : '#ffffff', 
+                          border: isAdmin ? 'none' : '1px solid #e2e8f0',
+                          color: isAdmin ? '#ffffff' : '#212529',
+                          borderRadius: isAdmin ? '16px 16px 4px 16px' : '16px 16px 16px 4px'
+                        }}
+                      >
+                        <div className="d-flex align-items-center mb-1 text-xs font-weight-bold" style={{ opacity: 0.85 }}>
+                          {isAdmin ? (
+                            <span className="badge mr-2" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#ffffff' }}>Admin Reply</span>
+                          ) : (
+                            <span className="badge badge-secondary mr-2">Client Reply</span>
+                          )}
+                          <span className={isAdmin ? 'text-white' : 'text-muted'}>{new Date(r.created_at).toLocaleString()}</span>
+                        </div>
+                        <p 
+                          className="text-sm m-0" 
+                          style={{ 
+                            lineHeight: 1.5, 
+                            whiteSpace: 'pre-wrap', 
+                            wordBreak: 'break-word',
+                            color: isAdmin ? '#ffffff' : '#1e293b'
+                          }}
+                        >
+                          {r.message}
                         </p>
-                        <p className="text-sm m-0 text-dark" style={{ lineHeight: 1.5 }}>{r.message}</p>
                       </div>
                     );
                   })}
@@ -236,6 +310,8 @@ export default function AdminTickets({ getHeaders, showNotice, API_BASE }) {
                   {thread.length === 0 && (
                     <p className="text-muted text-xs text-center py-2">No replies in this thread yet.</p>
                   )}
+
+                  <div ref={chatEndRef} />
                 </div>
 
                 {/* Reply Form */}

@@ -10,6 +10,7 @@ export default function AdminNotifications({ getHeaders, showNotice, API_BASE })
   const [topic, setTopic] = useState('offers'); // offers, games, wallet, vip
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState(null);
+  const [lastStats, setLastStats] = useState(null);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [page, setPage] = useState(1);
@@ -34,6 +35,7 @@ export default function AdminNotifications({ getHeaders, showNotice, API_BASE })
     if (!title || !body) return;
     setSending(true);
     setSendStatus('sending');
+    setLastStats(null);
     try {
       const res = await fetch(`${API_BASE}/api/admin/push`, {
         method: 'POST',
@@ -50,12 +52,16 @@ export default function AdminNotifications({ getHeaders, showNotice, API_BASE })
       const data = await res.json();
       if (data.success) {
         setSendStatus('success');
+        setLastStats(data.stats || null);
         setTitle('');
         setBody('');
         setImageUrl('');
         setTargetUserId('');
         fetchHistory();
-        setTimeout(() => setSendStatus(null), 4000);
+        setTimeout(() => {
+          setSendStatus(null);
+          setLastStats(null);
+        }, 12000);
       } else {
         setSendStatus('error');
         showNotice('error', data.message || 'Failed to send notification');
@@ -84,11 +90,38 @@ export default function AdminNotifications({ getHeaders, showNotice, API_BASE })
                 Compose high-fidelity push notifications, configure dynamic targeting and attach banners.
               </p>
 
-              {sendStatus && (
-                <div className={`alert text-sm ${sendStatus === 'success' ? 'alert-success' : sendStatus === 'sending' ? 'alert-warning' : 'alert-danger'} mb-3`}>
-                  {sendStatus === 'sending' && '📡 Broadcasting signal via FCM...'}
-                  {sendStatus === 'success' && '✅ Push notification processed and delivered successfully.'}
-                  {sendStatus === 'error' && '❌ Transaction failed. Ensure Firebase parameters are validated.'}
+              {sending && (
+                <div className="mb-3">
+                  <div className="d-flex justify-content-between align-items-center mb-1 text-xs text-secondary font-weight-bold">
+                    <span>📡 Broadcasting signals via FCM...</span>
+                    <span>Transmitting</span>
+                  </div>
+                  <div className="progress progress-xs mb-3" style={{ height: '6px', borderRadius: '3px' }}>
+                    <div className="progress-bar bg-primary progress-bar-striped progress-bar-animated" role="progressbar" style={{ width: '100%' }}></div>
+                  </div>
+                </div>
+              )}
+
+              {sendStatus === 'success' && lastStats && (
+                <div className="p-3 bg-light rounded border mb-3 shadow-sm">
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <span className="text-xs font-weight-bold text-success"><i className="fas fa-check-circle mr-1"></i> FCM Dispatch Statistics</span>
+                    <span className="badge badge-secondary text-xs">Total: {lastStats.total}</span>
+                  </div>
+                  <div className="progress mb-2" style={{ height: '8px', borderRadius: '4px' }}>
+                    <div className="progress-bar bg-success" role="progressbar" style={{ width: `${lastStats.total > 0 ? (lastStats.success / lastStats.total) * 100 : 0}%` }} title={`Success: ${lastStats.success}`}></div>
+                    <div className="progress-bar bg-danger" role="progressbar" style={{ width: `${lastStats.total > 0 ? (lastStats.failure / lastStats.total) * 100 : 0}%` }} title={`Failed: ${lastStats.failure}`}></div>
+                  </div>
+                  <div className="d-flex justify-content-between text-xs font-weight-bold">
+                    <span className="text-success">✅ Success: {lastStats.success}</span>
+                    <span className="text-danger">❌ Failed: {lastStats.failure}</span>
+                  </div>
+                </div>
+              )}
+
+              {sendStatus === 'error' && (
+                <div className="alert alert-danger text-sm mb-3">
+                  ❌ Transaction failed. Ensure Firebase parameters are validated.
                 </div>
               )}
 
@@ -213,11 +246,23 @@ export default function AdminNotifications({ getHeaders, showNotice, API_BASE })
                       <div key={n.id} className="p-3 bg-light rounded border text-left">
                         <div className="d-flex justify-content-between align-items-start mb-2">
                           <h6 className="font-weight-bold text-dark m-0" style={{ fontSize: '0.9rem' }}>{n.title}</h6>
-                          {n.sent_count !== undefined && (
-                            <span className="badge badge-success px-2 py-1" style={{ fontSize: '0.68rem' }}>
-                              {n.sent_count} sent
-                            </span>
-                          )}
+                          <div className="d-flex flex-wrap align-items-center" style={{ gap: '4px' }}>
+                            {n.sent_count !== undefined && (
+                              <span className="badge badge-info px-2 py-1" style={{ fontSize: '0.65rem' }}>
+                                {n.sent_count} Total
+                              </span>
+                            )}
+                            {n.success_count !== undefined && (
+                              <span className="badge badge-success px-2 py-1" style={{ fontSize: '0.65rem' }}>
+                                {n.success_count} Success
+                              </span>
+                            )}
+                            {n.failure_count !== undefined && n.failure_count > 0 ? (
+                              <span className="badge badge-danger px-2 py-1" style={{ fontSize: '0.65rem' }}>
+                                {n.failure_count} Failed
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         
                         <p className="text-muted text-xs mb-2">{n.message}</p>

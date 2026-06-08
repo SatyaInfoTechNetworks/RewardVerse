@@ -54,6 +54,7 @@ export default function AdminPortal() {
   const [adjustDesc, setAdjustDesc] = useState('');
   
   const [editUserModal, setEditUserModal] = useState(false);
+  const [isDeletingFingerprints, setIsDeletingFingerprints] = useState(false);
   const [editUserForm, setEditUserForm] = useState({
     name: '',
     email: '',
@@ -61,6 +62,16 @@ export default function AdminPortal() {
     location: '',
     referral_code: '',
     balance: ''
+  });
+
+  const [editFingerprintModal, setEditFingerprintModal] = useState(false);
+  const [editFingerprintForm, setEditFingerprintForm] = useState({
+    android_id: '',
+    device_model: '',
+    os_version: '',
+    app_version: '',
+    ip_address: '',
+    is_emulator: false
   });
 
   // Offer manager states
@@ -107,6 +118,13 @@ export default function AdminPortal() {
   const [selectedWithdrawal, setSelectedWithdrawal] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectModal, setRejectModal] = useState(false);
+  
+  const [providerPerformance, setProviderPerformance] = useState([]);
+  const [withdrawalSearch, setWithdrawalSearch] = useState('');
+  const [debouncedWithdrawalSearch, setDebouncedWithdrawalSearch] = useState('');
+  const [withdrawalPage, setWithdrawalPage] = useState(1);
+  const [withdrawalLimit, setWithdrawalLimit] = useState(15);
+  const [withdrawalTotal, setWithdrawalTotal] = useState(0);
 
   // Erasures states
   const [erasuresList, setErasuresList] = useState([]);
@@ -189,6 +207,15 @@ export default function AdminPortal() {
     return () => clearTimeout(timer);
   }, [userSearch]);
 
+  // Debounce withdrawal search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedWithdrawalSearch(withdrawalSearch);
+      setWithdrawalPage(1); // Reset page on search
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [withdrawalSearch]);
+
   // Check auth on load
   useEffect(() => {
     const token = localStorage.getItem('rewardverse_admin_token');
@@ -258,7 +285,10 @@ export default function AdminPortal() {
       const statsRes = await fetch(`${API_BASE}/api/admin/stats`, { headers });
       if (!checkResponseStatus(statsRes)) return;
       const statsData = await statsRes.json();
-      if (statsData.success) setStats(statsData.stats);
+      if (statsData.success) {
+        setStats(statsData.stats);
+        setProviderPerformance(statsData.providerPerformance || []);
+      }
 
       // 2. Offers (Admin list includes completion counts)
       const offersRes = await fetch(`${API_BASE}/api/admin/offers`, { headers });
@@ -305,22 +335,30 @@ export default function AdminPortal() {
 
   const fetchWithdrawals = async () => {
     try {
-      const statusParam = withdrawalStatus !== 'ALL' ? `?status=${withdrawalStatus}` : '';
-      const res = await fetch(`${API_BASE}/api/admin/withdrawals${statusParam}`, { headers: getHeaders() });
+      const statusParam = withdrawalStatus !== 'ALL' ? `status=${withdrawalStatus}` : '';
+      const searchParam = debouncedWithdrawalSearch ? `&search=${encodeURIComponent(debouncedWithdrawalSearch)}` : '';
+      const pageParam = `&page=${withdrawalPage}&limit=${withdrawalLimit}`;
+      const queryParams = [statusParam, searchParam, pageParam].filter(Boolean).join('&');
+      const prefix = queryParams ? `?${queryParams}` : '';
+      
+      const res = await fetch(`${API_BASE}/api/admin/withdrawals${prefix}`, { headers: getHeaders() });
       if (!checkResponseStatus(res)) return;
       const data = await res.json();
-      if (data.success) setWithdrawalsList(data.withdrawals || []);
+      if (data.success) {
+        setWithdrawalsList(data.withdrawals || []);
+        setWithdrawalTotal(data.total || 0);
+      }
     } catch (err) {
       console.error("Error fetching withdrawals:", err);
     }
   };
 
-  // Fetch withdrawals when status tab changes
+  // Fetch withdrawals when status tab, search or page changes
   useEffect(() => {
     if (isAuthenticated && activeTab === 'withdrawals') {
       fetchWithdrawals();
     }
-  }, [withdrawalStatus, activeTab, isAuthenticated]);
+  }, [withdrawalStatus, debouncedWithdrawalSearch, withdrawalPage, withdrawalLimit, activeTab, isAuthenticated]);
 
   // Debounce global transactions search input
   useEffect(() => {
@@ -475,6 +513,17 @@ export default function AdminPortal() {
       const data = await res.json();
       if (data.success) {
         setUserTransactions(data.transactions || []);
+        if (data.user) {
+          setSelectedUser({
+            ...data.user,
+            device_fingerprint: data.device_fingerprint || null
+          });
+        } else {
+          setSelectedUser({
+            ...user,
+            device_fingerprint: data.device_fingerprint || null
+          });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -551,33 +600,6 @@ export default function AdminPortal() {
     }
   };
 
-  const handleDeleteFingerprint = async (fpId) => {
-    if (!window.confirm("Are you sure you want to clear/delete this device fingerprint link? This will allow this phone/device to be used on other accounts.")) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/users/fingerprints/${fpId}`, {
-        method: 'DELETE',
-        headers: getHeaders()
-      });
-      if (!checkResponseStatus(res)) return;
-      const data = await res.json();
-      if (data.success) {
-        showNotice('success', 'Device fingerprint cleared successfully');
-        setSelectedUser(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            fingerprints: (prev.fingerprints || []).filter(fp => fp.id !== fpId)
-          };
-        });
-        fetchUsers();
-      } else {
-        showNotice('error', data.message);
-      }
-    } catch (err) {
-      showNotice('error', 'Failed to clear device fingerprint');
-    }
-  };
-
   const handleAdjustBalance = async (e) => {
     e.preventDefault();
     if (!selectedUser || !adjustAmount) return;
@@ -629,7 +651,12 @@ export default function AdminPortal() {
       current_streak: user.current_streak || 0,
       referred_by: user.referred_by || '',
       user_id: user.user_id || '',
-      uid: user.uid || ''
+      uid: user.uid || '',
+      device_model: user.device_fingerprint?.device_model || '',
+      os_version: user.device_fingerprint?.os_version || '',
+      app_version: user.device_fingerprint?.app_version || '',
+      ip_address: user.device_fingerprint?.ip_address || '',
+      is_emulator: user.device_fingerprint?.is_emulator ? true : false
     });
     setEditUserModal(true);
   };
@@ -647,7 +674,19 @@ export default function AdminPortal() {
       if (data.success) {
         showNotice('success', 'User information updated successfully');
         setEditUserModal(false);
-        const updatedUser = { ...selectedUser, ...editUserForm, balance: parseFloat(editUserForm.balance) };
+        const updatedUser = { 
+          ...selectedUser, 
+          ...editUserForm, 
+          balance: parseFloat(editUserForm.balance),
+          device_fingerprint: {
+            ...selectedUser.device_fingerprint,
+            device_model: editUserForm.device_model,
+            os_version: editUserForm.os_version,
+            app_version: editUserForm.app_version,
+            ip_address: editUserForm.ip_address,
+            is_emulator: editUserForm.is_emulator ? 1 : 0
+          }
+        };
         setSelectedUser(updatedUser);
         fetchUsers();
         fetchDashboardData();
@@ -656,6 +695,70 @@ export default function AdminPortal() {
       }
     } catch (err) {
       showNotice('error', 'Failed to update user info');
+    }
+  };
+
+  const handleDeleteFingerprints = async () => {
+    if (!selectedUser) return;
+    if (!window.confirm(`Are you sure you want to completely clear the device fingerprints and Android ID for ${selectedUser.name}? This allows them to register or login on a new device.`)) {
+      return;
+    }
+    setIsDeletingFingerprints(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUser.id}/fingerprints`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', 'User device fingerprints cleared successfully');
+        setSelectedUser({
+          ...selectedUser,
+          android_id: null,
+          device_fingerprint: null
+        });
+        fetchUsers();
+      } else {
+        showNotice('error', data.message || 'Failed to clear fingerprints');
+      }
+    } catch (err) {
+      showNotice('error', 'Network error while clearing fingerprints');
+    } finally {
+      setIsDeletingFingerprints(false);
+    }
+  };
+  const triggerEditFingerprint = (user) => {
+    setEditFingerprintForm({
+      android_id: user.android_id || '',
+      device_model: user.device_fingerprint?.device_model || '',
+      os_version: user.device_fingerprint?.os_version || '',
+      app_version: user.device_fingerprint?.app_version || '',
+      ip_address: user.device_fingerprint?.ip_address || '',
+      is_emulator: user.device_fingerprint?.is_emulator ? true : false
+    });
+    setEditFingerprintModal(true);
+  };
+
+  const handleEditFingerprintSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(editFingerprintForm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', 'Device fingerprint updated successfully');
+        setEditFingerprintModal(false);
+        await viewUserLedger(selectedUser);
+        fetchUsers();
+      } else {
+        showNotice('error', data.message);
+      }
+    } catch (err) {
+      showNotice('error', 'Failed to update device fingerprint');
     }
   };
 
@@ -749,21 +852,21 @@ export default function AdminPortal() {
           const fetched = data.offer;
           // Maps tiers
           const loadedTiers = fetched.tiers ? fetched.tiers.map(t => ({
-            title: t.app_tier_title || t.title,
-            backend_title: t.tier_title || t.title,
+            title: t.title || '',
+            backend_title: t.backend_title || '',
             reward: parseFloat(t.reward || 0),
             steps: typeof t.steps === 'string' ? JSON.parse(t.steps) : (t.steps || []),
             sequence: parseInt(t.sequence || 1)
           })) : [];
 
           // Safe parsing of input_instruction
+          const inputInstructionVal = fetched.input_instruction || fetched.inputInstruction;
           let loadedInstructions = [];
-          const rawInstruction = fetched.input_instruction || fetched.inputInstruction;
-          if (rawInstruction) {
+          if (inputInstructionVal) {
             try {
-              loadedInstructions = typeof rawInstruction === 'string' 
-                ? JSON.parse(rawInstruction) 
-                : rawInstruction;
+              loadedInstructions = typeof inputInstructionVal === 'string' 
+                ? JSON.parse(inputInstructionVal) 
+                : inputInstructionVal;
               if (!Array.isArray(loadedInstructions)) loadedInstructions = [];
             } catch (e) {
               console.error("Error parsing input_instruction:", e);
@@ -777,19 +880,19 @@ export default function AdminPortal() {
             category: fetched.category || 'Top Offers',
             icon_url: fetched.icon_url || fetched.iconUrl || '',
             tracking_url: fetched.tracking_url || fetched.trackingUrl || '',
-            total_reward: parseFloat(fetched.total_reward || fetched.totalReward || 0),
-            actual_price: parseFloat(fetched.actual_price || fetched.actualPrice || 0),
-            is_active: fetched.is_active ? true : false,
+            total_reward: parseFloat(fetched.total_reward !== undefined ? fetched.total_reward : (fetched.totalReward !== undefined ? fetched.totalReward : 0)),
+            actual_price: parseFloat(fetched.actual_price !== undefined ? fetched.actual_price : (fetched.actualPrice !== undefined ? fetched.actualPrice : 0)),
+            is_active: (fetched.is_active !== undefined ? fetched.is_active : (fetched.isActive !== undefined ? fetched.isActive : true)) ? true : false,
             type: fetched.type || 'online',
             reward_type: fetched.reward_type || fetched.rewardType || 'Multi Reward',
             estimated_time: fetched.estimated_time || fetched.estimatedTime || '5 mins',
             difficulty: fetched.difficulty || 'Medium',
-            is_hot: fetched.is_hot || fetched.isHot ? true : false,
+            is_hot: (fetched.is_hot !== undefined ? fetched.is_hot : (fetched.isHot !== undefined ? fetched.isHot : false)) ? true : false,
             extra_label: fetched.extra_label || fetched.extraLabel || '',
             input_type: fetched.input_type || fetched.inputType || '',
             input_instruction: loadedInstructions,
             tiers: loadedTiers,
-            daily_completion_cap: fetched.daily_completion_cap || fetched.dailyCompletionCap || 0,
+            daily_completion_cap: parseInt(fetched.daily_completion_cap !== undefined ? fetched.daily_completion_cap : (fetched.dailyCompletionCap !== undefined ? fetched.dailyCompletionCap : 0)),
             country_targeting: fetched.country_targeting || fetched.countryTargeting || 'IN'
           });
         }
@@ -814,16 +917,31 @@ export default function AdminPortal() {
   };
 
   // Withdrawals approvals
-  const handleApproveWithdrawal = async (id) => {
+  const handleApproveWithdrawal = async (w) => {
+    let redeem_code = null;
+    if (w.requires_redeem_code) {
+      const enteredCode = window.prompt(`Enter the redeem voucher code for ${w.method}:`);
+      if (enteredCode === null) {
+        return; // User cancelled
+      }
+      if (!enteredCode.trim()) {
+        alert('A redeem code is required to approve this payout method.');
+        return;
+      }
+      redeem_code = enteredCode.trim();
+    }
     try {
-      const res = await fetch(`${API_BASE}/api/admin/withdrawals/${id}/approve`, {
+      const res = await fetch(`${API_BASE}/api/admin/withdrawals/${w.id}/approve`, {
         method: 'POST',
-        headers: getHeaders()
+        headers: getHeaders(),
+        body: JSON.stringify({ redeem_code })
       });
       const data = await res.json();
       if (data.success) {
         showNotice('success', 'Withdrawal payout marked settled');
         fetchDashboardData();
+      } else {
+        showNotice('error', data.message || 'Failed to approve withdrawal');
       }
     } catch (err) {
       showNotice('error', 'Failed to approve withdrawal');
@@ -1014,7 +1132,7 @@ export default function AdminPortal() {
       {/* Sidebar (Same Menu Names & Hierarchy as sidebar.php) */}
       <aside className="main-sidebar sidebar-dark-primary elevation-4">
         <a href="#" onClick={() => { resetOfferForm(); setSelectedUser(null); setActiveTab('overview'); }} className="brand-link border-bottom-0 text-center py-3">
-          <img src="https://ui-avatars.com/api/?name=R&background=007bff&color=fff" className="brand-image img-circle elevation-3" style={{ opacity: .8 }} />
+          <img src="https://ui-avatars.com/api/?name=S&background=007bff&color=fff" className="brand-image img-circle elevation-3" style={{ opacity: .8 }} />
           <span className="brand-text font-weight-bold ml-2">Rewardverse Admin</span>
         </a>
         <div className="sidebar">
@@ -1260,6 +1378,32 @@ export default function AdminPortal() {
 
                 </div>
 
+                {/* Provider Performance Cards */}
+                <h4 className="mt-4 mb-3 font-weight-bold text-dark">Provider Performance</h4>
+                <div className="row">
+                  {providerPerformance.map(p => (
+                    <div key={p.key} className="col-12 col-sm-6 col-md-3 mb-3">
+                      <div className="info-box shadow-none border rounded-lg h-100 mb-0">
+                        <span className={`info-box-icon bg-${p.color} elevation-1`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '60px' }}>
+                          <img src={p.icon} style={{ width: '30px', height: '30px', objectFit: 'contain' }} alt={p.label} onError={(e) => { e.target.src = 'https://iili.io/qKAmR5J.png'; }} />
+                        </span>
+                        <div className="info-box-content">
+                          <span className="info-box-text font-weight-bold text-muted text-xs uppercase">{p.label}</span>
+                          <span className="info-box-number text-lg font-weight-black mt-1">
+                            {p.today.toLocaleString()} <span className="text-xs font-normal text-muted">coins today</span>
+                          </span>
+                          <div className="progress my-2" style={{ height: '2px' }}>
+                            <div className={`progress-bar bg-${p.color}`} style={{ width: '100%' }}></div>
+                          </div>
+                          <span className="progress-description text-xs text-secondary">
+                            Weekly: <strong>{p.weekly.toLocaleString()}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
                 <div className="card card-white shadow-none border rounded-lg mt-4">
                   <div className="card-body p-4">
                     <h5 className="font-weight-bold text-dark"><i className="fas fa-server mr-2 text-primary"></i> Active Database Host Credentials</h5>
@@ -1430,28 +1574,16 @@ export default function AdminPortal() {
                         {/* Primary Info */}
                         <div className="card card-white shadow-none border rounded-lg">
                           <div className="card-body">
-                            <div className="row">
-                              <div className="col-md-8 form-group mb-3">
-                                <label className="text-sm font-weight-bold">Offer Primary Title</label>
-                                <input 
-                                  type="text" 
-                                  className="form-control" 
-                                  placeholder="e.g. Install & Open Application" 
-                                  value={offerForm.title} 
-                                  onChange={e => setOfferForm({ ...offerForm, title: e.target.value })} 
-                                  required 
-                                />
-                              </div>
-                              <div className="col-md-4 form-group mb-3">
-                                <label className="text-sm font-weight-bold">Partner ID / Code (External ID)</label>
-                                <input 
-                                  type="text" 
-                                  className="form-control" 
-                                  placeholder="e.g. tg_join" 
-                                  value={offerForm.external_id || ''} 
-                                  onChange={e => setOfferForm({ ...offerForm, external_id: e.target.value })} 
-                                />
-                              </div>
+                            <div className="form-group mb-3">
+                              <label className="text-sm font-weight-bold">Offer Primary Title</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                placeholder="e.g. Install & Open Application" 
+                                value={offerForm.title} 
+                                onChange={e => setOfferForm({ ...offerForm, title: e.target.value })} 
+                                required 
+                              />
                             </div>
                             <div className="form-group mb-3">
                               <label className="text-sm font-weight-bold">Detailed Instruction</label>
@@ -1586,26 +1718,6 @@ export default function AdminPortal() {
                                 <option value="General">General</option>
                               </select>
                             </div>
-                            <div className="form-group mb-3">
-                              <label className="text-sm font-weight-bold">Daily Completion Cap</label>
-                              <input 
-                                type="number" 
-                                className="form-control" 
-                                placeholder="e.g. 100 (0 for unlimited)" 
-                                value={offerForm.daily_completion_cap} 
-                                onChange={e => setOfferForm({ ...offerForm, daily_completion_cap: parseInt(e.target.value || 0) })} 
-                              />
-                            </div>
-                            <div className="form-group mb-3">
-                              <label className="text-sm font-weight-bold">Country Targeting Whitelist</label>
-                              <input 
-                                type="text" 
-                                className="form-control" 
-                                placeholder="e.g. IN,US (or * for all)" 
-                                value={offerForm.country_targeting} 
-                                onChange={e => setOfferForm({ ...offerForm, country_targeting: e.target.value })} 
-                              />
-                            </div>
                             <div className="form-group mt-3">
                               <div className="custom-control custom-switch">
                                 <input 
@@ -1648,54 +1760,6 @@ export default function AdminPortal() {
                                 <option value="offline">Manual Proof Review</option>
                               </select>
                             </div>
-
-                            {offerForm.type === 'offline' && (
-                              <>
-                                <div className="form-group mb-3 border-top pt-2">
-                                  <label className="text-sm font-weight-bold text-primary">Offline Proof Type</label>
-                                  <select 
-                                    className="form-control" 
-                                    value={offerForm.input_type || ''} 
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      let autoInst = [];
-                                      if (val === 'file') {
-                                        autoInst = [{ label: "Upload Screenshot", type: "file", required: true }];
-                                      } else if (val === 'text') {
-                                        autoInst = [{ label: "Enter Proof Text / Code", type: "text", required: true }];
-                                      }
-                                      setOfferForm({ ...offerForm, input_type: val, input_instruction: autoInst });
-                                    }}
-                                  >
-                                    <option value="">None (Custom fields below)</option>
-                                    <option value="file">Screenshot File Upload</option>
-                                    <option value="text">Text / String Value</option>
-                                  </select>
-                                </div>
-                                <div className="form-group mb-3">
-                                  <label className="text-sm font-weight-bold text-primary">Proof Configuration (JSON)</label>
-                                  <textarea 
-                                    className="form-control text-monospace" 
-                                    rows={4} 
-                                    style={{ fontSize: '0.85rem' }}
-                                    placeholder='e.g. [{"label":"Telegram Username","type":"text","required":true}]' 
-                                    value={typeof offerForm.input_instruction === 'string' ? offerForm.input_instruction : JSON.stringify(offerForm.input_instruction, null, 2)} 
-                                    onChange={e => {
-                                      const rawVal = e.target.value;
-                                      let parsed = rawVal;
-                                      try {
-                                        parsed = JSON.parse(rawVal);
-                                      } catch (err) {
-                                        // Keep raw string while editing
-                                      }
-                                      setOfferForm({ ...offerForm, input_instruction: parsed });
-                                    }}
-                                  />
-                                  <span className="text-muted text-xs d-block mt-1">Specify fields to collect in mobile app. Must be a valid JSON array of objects.</span>
-                                </div>
-                              </>
-                            )}
-
                             <div className="form-group mb-3">
                               <label className="text-sm font-weight-bold">Difficulty</label>
                               <select 
@@ -1871,13 +1935,26 @@ export default function AdminPortal() {
 
                 {/* Main Queue Card */}
                 <div className="card card-warning card-outline shadow-none border rounded-lg mb-4 mt-3">
-                  <div className="card-header border-0 bg-transparent d-flex justify-content-between align-items-center">
-                    <h3 className="card-title font-weight-bold text-warning"><i className="fas fa-clock mr-2"></i>Awaiting Disbursements</h3>
-                    <div className="btn-group">
-                      <button className={`btn btn-xs ${withdrawalStatus === 'PENDING' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setWithdrawalStatus('PENDING')}>Pending</button>
-                      <button className={`btn btn-xs ${withdrawalStatus === 'APPROVED' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setWithdrawalStatus('APPROVED')}>Approved</button>
-                      <button className={`btn btn-xs ${withdrawalStatus === 'REJECTED' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setWithdrawalStatus('REJECTED')}>Rejected</button>
-                      <button className={`btn btn-xs ${withdrawalStatus === 'ALL' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setWithdrawalStatus('ALL')}>All</button>
+                  <div className="card-header border-0 bg-transparent pb-0">
+                    <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                      <h3 className="card-title font-weight-bold text-warning mb-3 mb-md-0"><i className="fas fa-clock mr-2"></i>Awaiting Disbursements</h3>
+                      <div className="d-flex flex-wrap align-items-center" style={{ gap: '10px' }}>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm rounded-pill px-3"
+                          placeholder="Search beneficiary, method, details..."
+                          style={{ width: '220px' }}
+                          value={withdrawalSearch}
+                          onChange={e => setWithdrawalSearch(e.target.value)}
+                        />
+                        <div className="btn-group">
+                          <button className={`btn btn-xs ${withdrawalStatus === 'PENDING' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => { setWithdrawalStatus('PENDING'); setWithdrawalPage(1); }}>Pending</button>
+                          <button className={`btn btn-xs ${withdrawalStatus === 'APPROVED' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => { setWithdrawalStatus('APPROVED'); setWithdrawalPage(1); }}>Approved</button>
+                          <button className={`btn btn-xs ${withdrawalStatus === 'REJECTED' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => { setWithdrawalStatus('REJECTED'); setWithdrawalPage(1); }}>Rejected</button>
+                          <button className={`btn btn-xs ${withdrawalStatus === 'ALL' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => { setWithdrawalStatus('ALL'); setWithdrawalPage(1); }}>All</button>
+                        </div>
+                        <button className="btn btn-sm btn-outline-secondary rounded-pill" onClick={fetchWithdrawals}><i className="fas fa-sync-alt"></i></button>
+                      </div>
                     </div>
                   </div>
                   <div className="card-body p-0 table-responsive">
@@ -1906,8 +1983,18 @@ export default function AdminPortal() {
                               <h5 className="mb-0 font-weight-bold text-primary">₹{parseFloat(w.amount_currency || (w.amount * 0.01)).toFixed(2)}</h5>
                             </td>
                             <td>
-                              <div className="font-weight-bold">{w.method}</div>
+                              <div className="font-weight-bold">
+                                {w.method}
+                                {w.requires_redeem_code === 1 || w.requires_redeem_code === true ? (
+                                  <span className="badge badge-success ml-2 text-xs" style={{ fontSize: '0.65rem' }}>VOUCHER</span>
+                                ) : null}
+                              </div>
                               <code className="text-xs text-danger">{w.details}</code>
+                              {w.redeem_code && (
+                                <div className="text-xs text-success font-weight-bold mt-1">
+                                  <i className="fas fa-key mr-1"></i> Code: <code>{w.redeem_code}</code>
+                                </div>
+                              )}
                             </td>
                             <td className="text-center text-xs text-info">
                               <i className="far fa-calendar-alt mr-1"></i> {new Date(w.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -1915,7 +2002,7 @@ export default function AdminPortal() {
                             <td className="text-right pr-4">
                               {w.status === 'PENDING' ? (
                                 <div className="btn-group shadow-sm">
-                                  <button className="btn btn-success btn-xs px-3 font-weight-bold py-1" onClick={() => handleApproveWithdrawal(w.id)}>Approve</button>
+                                  <button className="btn btn-success btn-xs px-3 font-weight-bold py-1" onClick={() => handleApproveWithdrawal(w)}>Approve</button>
                                   <button className="btn btn-danger btn-xs px-3 font-weight-bold py-1" onClick={() => triggerRejectWithdrawal(w)}>Reject</button>
                                 </div>
                               ) : <span className="text-xs text-muted">{w.status}</span>}
@@ -1929,6 +2016,24 @@ export default function AdminPortal() {
                         )}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="card-footer clearfix bg-white border-top-0 d-flex justify-content-between align-items-center">
+                    <span className="text-xs text-muted">Showing {withdrawalsList.length} of {withdrawalTotal} entries</span>
+                    {withdrawalTotal > withdrawalLimit && (
+                      <ul className="pagination pagination-sm m-0 float-right">
+                        <li className={`page-item ${withdrawalPage === 1 ? 'disabled' : ''}`}>
+                          <button className="page-link" onClick={() => setWithdrawalPage(prev => Math.max(1, prev - 1))}>«</button>
+                        </li>
+                        {Array.from({ length: Math.ceil(withdrawalTotal / withdrawalLimit) }, (_, i) => i + 1).map(p => (
+                          <li key={p} className={`page-item ${withdrawalPage === p ? 'active' : ''}`}>
+                            <button className="page-link" onClick={() => setWithdrawalPage(p)}>{p}</button>
+                          </li>
+                        ))}
+                        <li className={`page-item ${withdrawalPage === Math.ceil(withdrawalTotal / withdrawalLimit) ? 'disabled' : ''}`}>
+                          <button className="page-link" onClick={() => setWithdrawalPage(prev => Math.min(Math.ceil(withdrawalTotal / withdrawalLimit), prev + 1))}>»</button>
+                        </li>
+                      </ul>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2362,51 +2467,70 @@ export default function AdminPortal() {
                       <button className="btn btn-xs btn-primary px-3 rounded-pill" onClick={() => setAdjustBalanceModal(true)}>Trigger adjustment</button>
                     </div>
 
-                    <h6 className="font-weight-bold mb-3"><i className="fas fa-microchip mr-2 text-warning"></i> Device & Compliance Metadata</h6>
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <h6 className="font-weight-bold mb-0"><i className="fas fa-microchip text-warning mr-1"></i> Device & Compliance Metadata</h6>
+                      <div>
+                        <button 
+                          className="btn btn-xs btn-outline-primary px-3 rounded-pill mr-2" 
+                          onClick={() => triggerEditFingerprint(selectedUser)}
+                        >
+                          <i className="fas fa-edit mr-1"></i> Edit Fingerprint
+                        </button>
+                        <button 
+                          className="btn btn-xs btn-danger px-3 rounded-pill" 
+                          onClick={handleDeleteFingerprints}
+                          disabled={isDeletingFingerprints}
+                        >
+                          <i className="fas fa-trash-alt mr-1"></i> {isDeletingFingerprints ? 'Clearing...' : 'Clear Device Fingerprints'}
+                        </button>
+                      </div>
+                    </div>
                     <div className="p-3 bg-light rounded-lg border mb-4">
-                      <div className="mb-2">
-                        <span className="text-xs text-muted font-weight-bold">Android Device Identifier:</span><br />
-                        <code className="text-xs text-danger text-break">{selectedUser.android_id || 'REDACTED'}</code>
+                      <div className="row">
+                        <div className="col-md-6 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">Android Device Identifier:</span><br />
+                          <code className="text-xs text-danger text-break">{selectedUser.android_id || 'REDACTED'}</code>
+                        </div>
+                        <div className="col-md-6 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">Device Model:</span><br />
+                          <strong className="text-sm text-dark">{selectedUser.device_fingerprint?.device_model || 'N/A'}</strong>
+                        </div>
+                        <div className="col-md-6 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">OS Version:</span><br />
+                          <strong className="text-sm text-dark">{selectedUser.device_fingerprint?.os_version || 'N/A'}</strong>
+                        </div>
+                        <div className="col-md-6 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">App Client Version:</span><br />
+                          <strong className="text-sm text-dark">{selectedUser.device_fingerprint?.app_version || 'N/A'}</strong>
+                        </div>
+                        <div className="col-md-6 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">Last Known IP Address:</span><br />
+                          <code className="text-xs text-primary font-mono">{selectedUser.device_fingerprint?.ip_address || 'N/A'}</code>
+                        </div>
+                        <div className="col-md-6 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">Environment Type:</span><br />
+                          <span className={`badge badge-${selectedUser.device_fingerprint?.is_emulator ? 'danger' : 'success'}`}>
+                            {selectedUser.device_fingerprint?.is_emulator ? '🚫 Emulator Detected' : '📱 Physical Device'}
+                          </span>
+                        </div>
+                        <div className="col-md-12 mb-2">
+                          <span className="text-xs text-muted font-weight-bold">FCM Push Token:</span><br />
+                          <code className="text-xs text-dark text-break" style={{ maxHeight: '60px', display: 'block', overflowY: 'auto' }}>{selectedUser.fcm_token || 'N/A'}</code>
+                        </div>
+                        <div className="col-md-12 mt-1">
+                          {selectedUser.is_banned ? (
+                            <div className="mb-0">
+                              <span className="text-xs text-danger font-weight-bold">Compliance Status: Banned Member</span><br />
+                              <span className="text-xs text-muted font-weight-bold">Reason: </span>
+                              <span className="text-xs text-danger italic">{selectedUser.ban_reason || 'No violation log provided.'}</span>
+                            </div>
+                          ) : (
+                            <div className="mb-0">
+                              <span className="text-xs text-success font-weight-bold">Compliance Status: Active / Good Standing</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="mb-2">
-                        <span className="text-xs text-muted font-weight-bold">FCM Push Token:</span><br />
-                        <code className="text-xs text-dark text-break" style={{ maxHeight: '60px', display: 'block', overflowY: 'auto' }}>{selectedUser.fcm_token || 'N/A'}</code>
-                      </div>
-                      {selectedUser.is_banned ? (
-                        <div className="mb-0">
-                          <span className="text-xs text-danger font-weight-bold">Compliance Status: Banned Member</span><br />
-                          <span className="text-xs text-muted font-weight-bold">Reason: </span>
-                          <span className="text-xs text-danger italic">{selectedUser.ban_reason || 'No violation log provided.'}</span>
-                        </div>
-                      ) : (
-                        <div className="mb-0">
-                          <span className="text-xs text-success font-weight-bold">Compliance Status: Active / Good Standing</span>
-                        </div>
-                      )}
-
-                      {/* Fingerprint Devices List */}
-                      {selectedUser.fingerprints && selectedUser.fingerprints.length > 0 && (
-                        <div className="mt-3 pt-3 border-top">
-                          <span className="text-xs text-muted font-weight-bold d-block mb-2"><i className="fas fa-fingerprint text-warning mr-1"></i> Registered Security Fingerprints:</span>
-                          <div className="d-flex flex-column" style={{ gap: '8px' }}>
-                            {selectedUser.fingerprints.map(fp => (
-                              <div key={fp.id} className="p-2 border rounded bg-white d-flex justify-content-between align-items-center shadow-sm">
-                                <div className="text-xs text-dark" style={{ lineHeight: '1.4' }}>
-                                  <div className="font-weight-bold" style={{ fontSize: '0.8rem' }}>
-                                    <i className="fas fa-mobile-alt text-secondary mr-1"></i> {fp.device_model || 'Unknown Model'} 
-                                    <span className="text-muted font-weight-normal ml-1">(OS: {fp.os_version || 'N/A'}, App: {fp.app_version || '1.0.0'})</span>
-                                  </div>
-                                  <div>Android ID: <code className="text-danger">{fp.android_id}</code></div>
-                                  <div className="text-muted">IP Address: <strong>{fp.ip_address}</strong> | Linked: {new Date(fp.created_at).toLocaleString()}</div>
-                                </div>
-                                <button className="btn btn-outline-danger btn-xs px-2 rounded-pill font-weight-bold" title="Unbind Device" onClick={() => handleDeleteFingerprint(fp.id)}>
-                                  <i className="fas fa-trash mr-1"></i> Clear
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     <h6 className="font-weight-bold mb-3"><i className="fas fa-history mr-2 text-primary"></i> Ledger History</h6>
@@ -2536,6 +2660,34 @@ export default function AdminPortal() {
                       <label className="text-muted text-xs font-weight-bold mb-1">Lucky Spins Claimed (Today)</label>
                       <input type="number" className="form-control" value={editUserForm.daily_spins_count} onChange={e => setEditUserForm({ ...editUserForm, daily_spins_count: e.target.value })} />
                     </div>
+                    <div className="col-md-6 form-group mb-3">
+                      <label className="text-muted text-xs font-weight-bold mb-1">Device Model</label>
+                      <input type="text" className="form-control" value={editUserForm.device_model} onChange={e => setEditUserForm({ ...editUserForm, device_model: e.target.value })} />
+                    </div>
+                    <div className="col-md-6 form-group mb-3">
+                      <label className="text-muted text-xs font-weight-bold mb-1">OS Version</label>
+                      <input type="text" className="form-control" value={editUserForm.os_version} onChange={e => setEditUserForm({ ...editUserForm, os_version: e.target.value })} />
+                    </div>
+                    <div className="col-md-6 form-group mb-3">
+                      <label className="text-muted text-xs font-weight-bold mb-1">App Client Version</label>
+                      <input type="text" className="form-control" value={editUserForm.app_version} onChange={e => setEditUserForm({ ...editUserForm, app_version: e.target.value })} />
+                    </div>
+                    <div className="col-md-6 form-group mb-3">
+                      <label className="text-muted text-xs font-weight-bold mb-1">Last IP Address</label>
+                      <input type="text" className="form-control font-mono" value={editUserForm.ip_address} onChange={e => setEditUserForm({ ...editUserForm, ip_address: e.target.value })} />
+                    </div>
+                    <div className="col-md-12 form-group mb-3">
+                      <div className="custom-control custom-checkbox mt-2">
+                        <input 
+                          type="checkbox" 
+                          className="custom-control-input" 
+                          id="edit_is_emulator" 
+                          checked={editUserForm.is_emulator} 
+                          onChange={e => setEditUserForm({ ...editUserForm, is_emulator: e.target.checked })} 
+                        />
+                        <label className="custom-control-label text-xs font-weight-bold" htmlFor="edit_is_emulator">Mark Environment as Virtual/Emulator Environment (Compliance Flag)</label>
+                      </div>
+                    </div>
                     <div className="col-md-12 form-group mb-3">
                       <label className="text-muted text-xs font-weight-bold mb-1">FCM Push Token</label>
                       <textarea className="form-control font-mono" rows={3} value={editUserForm.fcm_token || ''} onChange={e => setEditUserForm({ ...editUserForm, fcm_token: e.target.value })} />
@@ -2596,6 +2748,90 @@ export default function AdminPortal() {
                   <div className="d-flex mt-4">
                     <button type="submit" className="btn btn-danger flex-fill rounded-pill py-2 mr-2">Confirm Reject</button>
                     <button type="button" className="btn btn-outline-secondary flex-fill rounded-pill py-2" onClick={() => { setRejectProofModal(false); setRejectProofClickId(null); setRejectProofReason(''); }}>Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Device Fingerprint Modal */}
+      {editFingerprintModal && selectedUser && (
+        <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,0.5)', zIndex: 10001 }} role="dialog">
+          <div className="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div className="modal-content rounded-lg border-0 shadow">
+              <div className="modal-header border-bottom-0">
+                <h5 className="modal-title font-weight-bold">Edit Device Fingerprint</h5>
+                <button type="button" className="close" onClick={() => setEditFingerprintModal(false)}>&times;</button>
+              </div>
+              <div className="modal-body pt-0">
+                <form onSubmit={handleEditFingerprintSubmit}>
+                  <div className="form-group mb-3">
+                    <label className="text-muted text-xs font-weight-bold mb-1">Android Device ID</label>
+                    <input 
+                      type="text" 
+                      className="form-control font-mono" 
+                      value={editFingerprintForm.android_id} 
+                      onChange={e => setEditFingerprintForm({ ...editFingerprintForm, android_id: e.target.value })} 
+                      placeholder="e.g. 3bb9a18dd5"
+                    />
+                  </div>
+                  <div className="form-group mb-3">
+                    <label className="text-muted text-xs font-weight-bold mb-1">Device Model</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      value={editFingerprintForm.device_model} 
+                      onChange={e => setEditFingerprintForm({ ...editFingerprintForm, device_model: e.target.value })} 
+                      placeholder="e.g. Pixel 6 Pro"
+                    />
+                  </div>
+                  <div className="form-group mb-3">
+                    <label className="text-muted text-xs font-weight-bold mb-1">OS Version</label>
+                    <input 
+                      type="text" 
+                      className="form-control font-mono" 
+                      value={editFingerprintForm.os_version} 
+                      onChange={e => setEditFingerprintForm({ ...editFingerprintForm, os_version: e.target.value })} 
+                      placeholder="e.g. Android 13 (API 33)"
+                    />
+                  </div>
+                  <div className="form-group mb-3">
+                    <label className="text-muted text-xs font-weight-bold mb-1">App Client Version</label>
+                    <input 
+                      type="text" 
+                      className="form-control font-mono" 
+                      value={editFingerprintForm.app_version} 
+                      onChange={e => setEditFingerprintForm({ ...editFingerprintForm, app_version: e.target.value })} 
+                      placeholder="e.g. 1.0.4"
+                    />
+                  </div>
+                  <div className="form-group mb-3">
+                    <label className="text-muted text-xs font-weight-bold mb-1">Last IP Address</label>
+                    <input 
+                      type="text" 
+                      className="form-control font-mono" 
+                      value={editFingerprintForm.ip_address} 
+                      onChange={e => setEditFingerprintForm({ ...editFingerprintForm, ip_address: e.target.value })} 
+                      placeholder="e.g. 192.168.1.1"
+                    />
+                  </div>
+                  <div className="form-group mb-3">
+                    <div className="custom-control custom-checkbox mt-2">
+                      <input 
+                        type="checkbox" 
+                        className="custom-control-input" 
+                        id="edit_fp_is_emulator" 
+                        checked={editFingerprintForm.is_emulator} 
+                        onChange={e => setEditFingerprintForm({ ...editFingerprintForm, is_emulator: e.target.checked })} 
+                      />
+                      <label className="custom-control-label text-xs font-weight-bold" htmlFor="edit_fp_is_emulator">Mark Environment as Virtual/Emulator Environment</label>
+                    </div>
+                  </div>
+                  <div className="d-flex mt-4">
+                    <button type="submit" className="btn btn-primary flex-fill rounded-pill py-2 mr-2">Save Fingerprint</button>
+                    <button type="button" className="btn btn-outline-secondary flex-fill rounded-pill py-2" onClick={() => setEditFingerprintModal(false)}>Cancel</button>
                   </div>
                 </form>
               </div>

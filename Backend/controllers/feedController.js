@@ -5,25 +5,13 @@ import pool from '../db.js';
 // ----------------------------------------------------
 export const listBanners = async (req, res) => {
   try {
-    let rows;
-    try {
-      // Try modern schema with is_active column
-      [rows] = await pool.query(`
-        SELECT id, image_url, action_url 
-        FROM banners 
-        WHERE is_active = 1 
-        ORDER BY display_order ASC, created_at DESC
-      `);
-    } catch (queryErr) {
-      // Fallback: legacy PHP schema uses 'active' column
-      console.warn('listBanners: falling back to legacy active column:', queryErr.message);
-      [rows] = await pool.query(`
-        SELECT id, image_url, action_url 
-        FROM banners 
-        WHERE active = 1 
-        ORDER BY display_order ASC, created_at DESC
-      `);
-    }
+    const query = `
+      SELECT id, image_url, action_url 
+      FROM banners 
+      WHERE is_active = 1 
+      ORDER BY display_order ASC, created_at DESC
+    `;
+    const [rows] = await pool.query(query);
 
     const banners = rows.map(row => ({
       id: String(row.id),
@@ -56,9 +44,12 @@ export const getRecentEarnings = async (req, res) => {
         t.amount,
         t.source,
         t.created_at as timestamp,
-        t.description
+        t.description,
+        o.icon_url as offer_icon_url
       FROM transactions t
       JOIN users u ON t.user_id = u.id
+      LEFT JOIN user_offer_progress uop ON t.reference_id = uop.click_id AND t.source IN ('OFFER', 'OFFLINE_OFFER')
+      LEFT JOIN offers o ON uop.offer_id = o.id
       WHERE t.type = 'CREDIT' 
       AND t.source IN ('OFFER', 'OFFLINE_OFFER', 'PUBSCALE', 'OFFERMARU', 'OPINION_UNIVERSE', 'CPX_RESEARCH', 'GROWDECK', 'ADJUMP', 'REAL_OPINION', 'PLAYTIME', 'POCKETSFULL', 'TIMEWALL')
       ORDER BY t.created_at DESC
@@ -87,8 +78,13 @@ export const getRecentEarnings = async (req, res) => {
       const source = row.source || '';
       const sourceUpper = source.toUpperCase();
       
-      // Look up customized icon from admin config first, then fall back to default assets
-      let iconUrl = earningIcons[sourceUpper] || '';
+      // Prioritize the custom offer logo URL if it is a custom offer completion
+      let iconUrl = '';
+      if ((sourceUpper === 'OFFER' || sourceUpper === 'OFFLINE_OFFER') && row.offer_icon_url) {
+        iconUrl = row.offer_icon_url;
+      } else {
+        iconUrl = earningIcons[sourceUpper] || '';
+      }
 
       if (!iconUrl) {
         // Default icons mapping based on source

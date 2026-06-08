@@ -32,9 +32,9 @@ export default function Terms() {
               fontWeight: 800,
               color: '#fff',
               fontSize: '1.2rem'
-            }}>R</div>
+            }}>S</div>
             <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff' }}>
-              Reward<span style={{ color: 'var(--primary)' }}>verse</span>
+              Rewardverse<span style={{ color: 'var(--primary)' }}>India</span>
             </span>
           </Link>
           <Link to="/" className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}>

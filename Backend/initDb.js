@@ -86,19 +86,18 @@ export async function initializeDatabase() {
   try {
     connection = await pool.getConnection();
 
-    // 1. users Table
+    // 1. users Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        id CHAR(36) PRIMARY KEY,
         uid VARCHAR(255) UNIQUE NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
         phone_number VARCHAR(20),
         name VARCHAR(255),
         profile_pic TEXT,
         location VARCHAR(255),
         balance DECIMAL(10, 2) DEFAULT 0.00,
         referral_code VARCHAR(50) UNIQUE,
-        referred_by BIGINT,
+        referred_by CHAR(36),
         android_id VARCHAR(255) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (referred_by) REFERENCES users(id) ON DELETE SET NULL
@@ -174,11 +173,11 @@ export async function initializeDatabase() {
     // ⚠️ Auto-sweep all NOT NULL/no-default columns in offer_tiers
     await sweepLegacyColumnsForDefaults(connection, 'offer_tiers');
 
-    // 4. user_offer_progress Table
+    // 4. user_offer_progress Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS user_offer_progress (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         offer_id CHAR(36) NOT NULL,
         click_id VARCHAR(255) UNIQUE NULL,
         status ENUM('STARTED', 'COMPLETED') DEFAULT 'STARTED',
@@ -197,12 +196,11 @@ export async function initializeDatabase() {
     // ⚠️ Auto-sweep all NOT NULL/no-default columns in user_offer_progress
     await sweepLegacyColumnsForDefaults(connection, 'user_offer_progress');
 
-    // 5. transactions Table
-    // Let's modify the ENUM values safely or use simple VARCHAR for source/type to be flexible.
+    // 5. transactions Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS transactions (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
         type VARCHAR(20) NOT NULL,
         source VARCHAR(50) NOT NULL,
@@ -214,18 +212,17 @@ export async function initializeDatabase() {
     `);
     await migrateColumnToVarcharIfNumeric(connection, 'transactions', 'id', 100);
     await addColumnIfNotExists(connection, 'transactions', 'description', 'TEXT NULL');
-    // ⚠️ Legacy tables may not have these columns — ensure they exist
     await addColumnIfNotExists(connection, 'transactions', 'reference_id', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'transactions', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
 
     // ⚠️ Auto-sweep all NOT NULL/no-default columns in transactions
     await sweepLegacyColumnsForDefaults(connection, 'transactions');
 
-    // 6. withdrawals Table
+    // 6. withdrawals Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS withdrawals (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
         method VARCHAR(50) NOT NULL,
         details TEXT,
@@ -340,10 +337,10 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 8. streaks Table
+    // 8. streaks Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS streaks (
-        user_id BIGINT PRIMARY KEY,
+        user_id CHAR(36) PRIMARY KEY,
         current_streak INT DEFAULT 0,
         last_claim_date DATE NULL,
         total_claims INT DEFAULT 0,
@@ -351,10 +348,10 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 9. lucky_spins Table
+    // 9. lucky_spins Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS lucky_spins (
-        user_id BIGINT PRIMARY KEY,
+        user_id CHAR(36) PRIMARY KEY,
         spins_left INT DEFAULT 2,
         last_spin_date DATE NULL,
         total_spins INT DEFAULT 0,
@@ -380,21 +377,18 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'banners', 'action_url', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'banners', 'display_order', 'INT DEFAULT 0');
     await addColumnIfNotExists(connection, 'banners', 'is_active', 'BOOLEAN DEFAULT TRUE');
-    // ⚠️ Legacy banners table may not have created_at — ensure it exists
     await addColumnIfNotExists(connection, 'banners', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
-    // ⚠️ Legacy PHP banners table may have 'active' column without a default — fix it
+    
+    // Fix legacy fields in banners if necessary
     try {
       await connection.query("ALTER TABLE banners MODIFY COLUMN active TINYINT(1) NOT NULL DEFAULT 1");
-    } catch (e) { /* column doesn't exist, safe to ignore */ }
-    // Ensure is_active has correct default
+    } catch (e) { /* safe to ignore */ }
     try {
       await connection.query("ALTER TABLE banners MODIFY COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1");
     } catch (e) { /* safe to ignore */ }
-    // ⚠️ Legacy PHP banners table may have 'order_index' column without a default — fix it
     try {
       await connection.query("ALTER TABLE banners MODIFY COLUMN order_index INT NOT NULL DEFAULT 0");
-    } catch (e) { /* column doesn't exist, safe to ignore */ }
-    // Ensure order_index exists if this is a mixed-state DB
+    } catch (e) { /* safe to ignore */ }
     await addColumnIfNotExists(connection, 'banners', 'order_index', 'INT NOT NULL DEFAULT 0');
 
     // 11. lifafas Table
@@ -413,23 +407,23 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 12. lifafa_claims Table
+    // 12. lifafa_claims Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS lifafa_claims (
         id CHAR(36) PRIMARY KEY,
         lifafa_id VARCHAR(100) NOT NULL,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         amount DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 13. telegram_verification Table
+    // 13. telegram_verification Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS telegram_verification (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NULL,
+        user_id CHAR(36) NULL,
         verify_token VARCHAR(255) UNIQUE NULL,
         telegram_user_id VARCHAR(255) NULL,
         click_id VARCHAR(255) UNIQUE NULL,
@@ -439,11 +433,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 14. tickets Table
+    // 14. tickets Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS tickets (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         subject VARCHAR(255) NOT NULL,
         message TEXT NOT NULL,
         status ENUM('OPEN', 'REPLIED', 'CLOSED') DEFAULT 'OPEN',
@@ -452,12 +446,12 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 15. ticket_replies Table
+    // 15. ticket_replies Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS ticket_replies (
         id CHAR(36) PRIMARY KEY,
         ticket_id CHAR(36) NOT NULL,
-        user_id BIGINT NULL,
+        user_id CHAR(36) NULL,
         sender_type ENUM('USER', 'ADMIN') NOT NULL,
         message TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -465,11 +459,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 16. offer_likes Table
+    // 16. offer_likes Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS offer_likes (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         offer_id CHAR(36) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY unique_like (user_id, offer_id),
@@ -478,11 +472,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 17. deletion_requests Table
+    // 17. deletion_requests Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS deletion_requests (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id BIGINT NULL,
+        user_id CHAR(36) NULL,
         email VARCHAR(255) NOT NULL,
         reason TEXT NULL,
         status ENUM('PENDING', 'APPROVED', 'REJECTED') DEFAULT 'PENDING',
@@ -501,12 +495,12 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 19. referral_uses Table
+    // 19. referral_uses Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS referral_uses (
         id CHAR(36) PRIMARY KEY,
-        referrer_id BIGINT NOT NULL,
-        referred_user_id BIGINT NOT NULL,
+        referrer_id CHAR(36) NOT NULL,
+        referred_user_id CHAR(36) NOT NULL,
         referral_code VARCHAR(50) NOT NULL,
         status VARCHAR(20) DEFAULT 'PENDING',
         offers_completed_count INT DEFAULT 0,
@@ -534,7 +528,7 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'notifications', 'target_topic', 'VARCHAR(50) NULL');
     await addColumnIfNotExists(connection, 'notifications', 'status', 'VARCHAR(20) DEFAULT "sent"');
 
-    // 22. referral_settings: ensure description_text column exists
+    // referral_settings migrations
     await addColumnIfNotExists(connection, 'referral_settings', 'description_text', 'TEXT NULL');
     await addColumnIfNotExists(connection, 'referral_settings', 'referee_signup_bonus', 'DECIMAL(10, 2) DEFAULT 0.00');
     await addColumnIfNotExists(connection, 'referral_settings', 'referrer_reward_coins', 'DECIMAL(10, 2) DEFAULT 10.00');
@@ -556,11 +550,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 26. user_visit_progress Table
+    // 26. user_visit_progress Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS user_visit_progress (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         task_id CHAR(36) NOT NULL,
         completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -568,12 +562,12 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 21. offer_completions Table
+    // 21. offer_completions Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS offer_completions (
         id INT AUTO_INCREMENT PRIMARY KEY,
         completion_id VARCHAR(255) UNIQUE NOT NULL,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         offer_id VARCHAR(100) NULL,
         provider VARCHAR(100) NULL,
         payout_coins DECIMAL(10, 2) DEFAULT 0.00,
@@ -589,11 +583,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 23. device_fingerprints Table
+    // 23. device_fingerprints Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS device_fingerprints (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         android_id VARCHAR(255) NOT NULL,
         device_model VARCHAR(100) NULL,
         os_version VARCHAR(50) NULL,
@@ -606,11 +600,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 24. admin_audit_logs Table
+    // 24. admin_audit_logs Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS admin_audit_logs (
         id CHAR(36) PRIMARY KEY,
-        admin_id BIGINT NOT NULL,
+        admin_id CHAR(36) NOT NULL,
         action_type VARCHAR(50) NOT NULL,
         target_id VARCHAR(255) NULL,
         payload JSON NULL,
@@ -626,7 +620,7 @@ export async function initializeDatabase() {
         id CHAR(36) PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
         description TEXT NULL,
-        type ENUM('LUCKY_DRAW', 'REFERRAL', 'EARNINGS') NOT NULL,
+        type VARCHAR(50) NOT NULL,
         start_time DATETIME NOT NULL,
         end_time DATETIME NOT NULL,
         max_entries_per_day INT DEFAULT 3,
@@ -649,13 +643,13 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 29. contest_entries Table
+    // 29. contest_entries Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS contest_entries (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         contest_id CHAR(36) NOT NULL,
-        entry_source ENUM('AD', 'REFERRAL', 'EARNINGS', 'FREE') NOT NULL,
+        entry_source VARCHAR(50) NOT NULL,
         entries_count INT DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -665,12 +659,12 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 30. contest_winners Table
+    // 30. contest_winners Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS contest_winners (
         id CHAR(36) PRIMARY KEY,
         contest_id CHAR(36) NOT NULL,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         reward_position INT NOT NULL,
         reward_type ENUM('COINS', 'CASH', 'GIFTCARD') NOT NULL,
         reward_value DECIMAL(10, 2) NOT NULL,
@@ -681,11 +675,11 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 31. contest_participants Table (New: v2.5 Architecture)
+    // 31. contest_participants Table (CHAR(36) UUID aligned)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS contest_participants (
         id CHAR(36) PRIMARY KEY,
-        user_id BIGINT NOT NULL,
+        user_id CHAR(36) NOT NULL,
         contest_id CHAR(36) NOT NULL,
         joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY unique_user_contest_participation (user_id, contest_id),
@@ -708,10 +702,16 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'contests', 'allow_coins_entry', 'BOOLEAN DEFAULT FALSE');
     await addColumnIfNotExists(connection, 'contests', 'ticket_coins_cost', 'DECIMAL(10, 2) DEFAULT 0.00');
     await addColumnIfNotExists(connection, 'contests', 'max_tickets_per_user', 'INT DEFAULT 10');
+    await addColumnIfNotExists(connection, 'contests', 'ad_entry_cooldown', 'INT DEFAULT 0');
+
+    // Payout and Withdrawals Migrations (Added missing columns)
+    await addColumnIfNotExists(connection, 'payout_methods', 'requires_redeem_code', 'BOOLEAN DEFAULT FALSE');
+    await addColumnIfNotExists(connection, 'withdrawals', 'redeem_code', 'VARCHAR(255) NULL');
 
     await addColumnIfNotExists(connection, 'transactions', 'opening_balance', 'DECIMAL(10, 2) DEFAULT NULL');
     await addColumnIfNotExists(connection, 'transactions', 'closing_balance', 'DECIMAL(10, 2) DEFAULT NULL');
     await addColumnIfNotExists(connection, 'transactions', 'tamper_signature', 'VARCHAR(64) DEFAULT NULL');
+    await addColumnIfNotExists(connection, 'referral_uses', 'rewarded_at', 'TIMESTAMP NULL');
 
     // Ensure transactions and withdrawals column types are flexible (legacy ENUM to VARCHAR)
     try {
@@ -753,6 +753,23 @@ export async function initializeDatabase() {
       );
     } catch (txMigErr) {
       console.log('⚠️ Legacy transaction_id migration note (safe to ignore if column does not exist):', txMigErr.message);
+    }
+
+    // Seed default configurations (Branded to Rewardverse)
+    try {
+      console.log('⚡ Seeding default configurations...');
+      await connection.query(
+        `INSERT INTO app_configs (config_key, config_value, description) 
+         VALUES ('telegram_channel_username', '@Rewardverse', 'Telegram channel username for task verification')
+         ON DUPLICATE KEY UPDATE config_value = IF(config_value = '@stuearn' OR config_value = 'stuearn' OR config_value = '@SatyainfotechNetworks', '@Rewardverse', config_value)`
+      );
+      await connection.query(
+        `INSERT INTO app_configs (config_key, config_value, description) 
+         VALUES ('telegram_bot_username', 'rewardverse_verification_bot', 'Telegram bot username for task verification')
+         ON DUPLICATE KEY UPDATE config_value = IF(config_value = 'stuearn_bot' OR config_value = 'sit_verification_bot', 'rewardverse_verification_bot', config_value)`
+      );
+    } catch (confErr) {
+      console.log('⚠️ Error seeding default configurations:', confErr.message);
     }
 
     console.log('✅ All database tables checked/created successfully.');

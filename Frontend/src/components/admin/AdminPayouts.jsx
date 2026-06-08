@@ -20,6 +20,7 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
     conversion_rate: 0.01,
     processing_time: 'Instant',
     is_active: true,
+    requires_redeem_code: false,
     fields: [{ label: 'UPI ID', placeholder: 'e.g. paytm@upi', type: 'text' }],
     tiers: []
   });
@@ -79,6 +80,7 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
       conversion_rate: m.conversion_rate ?? 1,
       processing_time: m.processing_time || 'Instant',
       is_active: !!m.is_active,
+      requires_redeem_code: !!m.requires_redeem_code,
       fields: parsedFields,
       tiers: m.tiers ? m.tiers.map(t => ({ coin_cost: t.coin_cost, monetary_value: t.monetary_value, currency_symbol: t.currency_symbol || '₹' })) : []
     });
@@ -108,6 +110,7 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
         conversion_rate: editForm.conversion_rate,
         processing_time: editForm.processing_time,
         is_active: editForm.is_active,
+        requires_redeem_code: editForm.requires_redeem_code ? 1 : 0,
         input_label: labels,
         input_placeholder: placeholders,
         input_type: types,
@@ -153,6 +156,7 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
         conversion_rate: createForm.conversion_rate,
         processing_time: createForm.processing_time,
         is_active: createForm.is_active,
+        requires_redeem_code: createForm.requires_redeem_code ? 1 : 0,
         input_label: labels,
         input_placeholder: placeholders,
         input_type: types,
@@ -381,10 +385,16 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
           </div>
 
           <div className="card-footer d-flex justify-content-between align-items-center">
-            <label className="d-flex align-items-center m-0 text-sm" style={{ cursor: 'pointer', gap: '8px' }}>
-              <input type="checkbox" checked={createForm.is_active} onChange={e => setCreateForm({ ...createForm, is_active: e.target.checked })} />
-              Enable this payout gateway immediately
-            </label>
+            <div className="d-flex align-items-center" style={{ gap: '15px' }}>
+              <label className="d-flex align-items-center m-0 text-sm" style={{ cursor: 'pointer', gap: '8px' }}>
+                <input type="checkbox" checked={createForm.is_active} onChange={e => setCreateForm({ ...createForm, is_active: e.target.checked })} />
+                Enable this payout gateway immediately
+              </label>
+              <label className="d-flex align-items-center m-0 text-sm" style={{ cursor: 'pointer', gap: '8px' }}>
+                <input type="checkbox" checked={createForm.requires_redeem_code || false} onChange={e => setCreateForm({ ...createForm, requires_redeem_code: e.target.checked })} />
+                Requires Redeem Code on Approval
+              </label>
+            </div>
             <div className="d-flex gap-2" style={{ gap: '8px' }}>
               <button className="btn btn-default btn-sm" onClick={() => setIsCreating(false)}>Cancel</button>
               <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={creating}>
@@ -516,6 +526,10 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
                           <input type="checkbox" checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} />
                           Active (available to users)
                         </label>
+                        <label className="d-flex align-items-center m-0 text-sm" style={{ cursor: 'pointer', gap: '8px' }}>
+                          <input type="checkbox" checked={editForm.requires_redeem_code || false} onChange={e => setEditForm({ ...editForm, requires_redeem_code: e.target.checked })} />
+                          Requires Redeem Code on Approval
+                        </label>
                         <button className="btn btn-primary btn-block btn-sm" onClick={handleSave} disabled={saving}>
                           <Save size={14} className="mr-1" /> {saving ? 'Saving...' : 'Save Changes'}
                         </button>
@@ -545,11 +559,16 @@ export default function AdminPayouts({ getHeaders, showNotice, API_BASE }) {
                               <p className="text-muted text-xs m-0 mt-1">{m.description || 'No description'}</p>
                             </div>
                           </div>
-                          {m.is_active ? (
-                            <span className="badge badge-success px-2 py-1">ACTIVE</span>
-                          ) : (
-                            <span className="badge badge-danger px-2 py-1">DISABLED</span>
-                          )}
+                          <div className="d-flex flex-column align-items-end" style={{ gap: '4px' }}>
+                            {m.is_active ? (
+                              <span className="badge badge-success px-2 py-1">ACTIVE</span>
+                            ) : (
+                              <span className="badge badge-danger px-2 py-1">DISABLED</span>
+                            )}
+                            {m.requires_redeem_code ? (
+                              <span className="badge badge-info px-2 py-1">CODE REQ</span>
+                            ) : null}
+                          </div>
                         </div>
 
                         <div className="row text-center mb-3">

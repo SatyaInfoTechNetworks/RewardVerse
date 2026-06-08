@@ -18,8 +18,13 @@ export const listOffers = async (req, res) => {
 
     // Exclude completed offers if user_id is provided
     if (user_id) {
+      const [uRows] = await pool.query(
+        'SELECT id FROM users WHERE id = ? OR uid = ? OR user_id = ? LIMIT 1',
+        [user_id, user_id, user_id]
+      );
+      const resolvedUserId = uRows.length > 0 ? uRows[0].id : user_id;
       query += ` AND id NOT IN (SELECT offer_id FROM user_offer_progress WHERE user_id = ? AND status = 'COMPLETED')`;
-      params.push(user_id);
+      params.push(resolvedUserId);
     }
 
     if (category) {
@@ -44,7 +49,7 @@ export const listOffers = async (req, res) => {
     // Fetch all tiers for these offers
     const offerIds = offers.map(o => o.id);
     const [tiers] = await pool.query(
-      'SELECT id, offer_id, tier_title, app_tier_title, reward, status, steps FROM offer_tiers WHERE offer_id IN (?) ORDER BY id ASC',
+      'SELECT id, offer_id, tier_title, app_tier_title, reward, status, steps, sequence FROM offer_tiers WHERE offer_id IN (?) ORDER BY sequence ASC, id ASC',
       [offerIds]
     );
 
@@ -139,18 +144,21 @@ export const listOffers = async (req, res) => {
 // Get offer details by ID (including user progress)
 export const getOfferById = async (req, res) => {
   try {
-    const offerId = req.params.id;
+    const offerId = req.params.id || req.query.id;
     const userId = req.query.user_id || (req.user ? req.user.id : null);
+
+    console.log(`[getOfferById] params.id=${req.params.id} query.id=${req.query.id} → resolved offerId=${offerId}`);
 
     const [offerRows] = await pool.query('SELECT * FROM offers WHERE id = ? LIMIT 1', [offerId]);
     if (offerRows.length === 0) {
+      console.warn(`[getOfferById] Offer not found in DB for id=${offerId}`);
       return res.status(404).json({ success: false, message: 'Offer not found' });
     }
     const o = offerRows[0];
 
     // Fetch tiers
     const [tiers] = await pool.query(
-      'SELECT id, tier_title, app_tier_title, reward, status, steps FROM offer_tiers WHERE offer_id = ? ORDER BY id ASC',
+      'SELECT id, tier_title, app_tier_title, reward, status, steps, sequence FROM offer_tiers WHERE offer_id = ? ORDER BY sequence ASC, id ASC',
       [offerId]
     );
 
@@ -240,24 +248,39 @@ export const getOfferById = async (req, res) => {
         description: o.description,
         category: o.category,
         iconUrl: o.icon_url,
+        icon_url: o.icon_url,
         trackingUrl: o.tracking_url,
+        tracking_url: o.tracking_url,
         totalReward: parseFloat(o.total_reward || 0),
+        total_reward: parseFloat(o.total_reward || 0),
+        actualPrice: parseFloat(o.actual_price || 0),
+        actual_price: parseFloat(o.actual_price || 0),
+        isActive: o.is_active ? true : false,
+        is_active: o.is_active ? true : false,
         type: o.type || 'online',
         inputType: o.input_type || null,
+        input_type: o.input_type || null,
         inputInstruction: o.input_instruction || null,
+        input_instruction: o.input_instruction || null,
         isCompleted: isCompleted,
         rewardType: o.reward_type || 'Multi Reward',
+        reward_type: o.reward_type || 'Multi Reward',
         extraLabel: o.extra_label || null,
+        extra_label: o.extra_label || null,
         estimatedTime: o.estimated_time || null,
+        estimated_time: o.estimated_time || null,
         difficulty: o.difficulty || 'Medium',
         likesCount: parseInt(o.likes_count || 0),
         isHot: Boolean(o.is_hot),
+        is_hot: Boolean(o.is_hot),
         click_id: clickId,
         userInput: userInput,
         adminStatus: adminStatus,
         rejectionReason: rejectionReason,
         dailyCompletionCap: dailyCompletionCap,
+        daily_completion_cap: dailyCompletionCap,
         countryTargeting: o.country_targeting || null,
+        country_targeting: o.country_targeting || null,
         completionsToday: completionsToday,
         isCapped: dailyCompletionCap > 0 && completionsToday >= dailyCompletionCap,
         tiers: formattedTiers
@@ -268,11 +291,11 @@ export const getOfferById = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
-// Start Offer (Click logging)
+// Start Offer (Click logging & Tracking URL resolution)
 export const startOffer = async (req, res) => {
   try {
     const userId = req.body.user_id || (req.user ? req.user.id : null);
-    const { offer_id } = req.body || req.params;
+    const { offer_id, gaid, device_model } = req.body || {};
 
     if (!userId) {
       return res.status(400).json({ success: false, message: 'User ID is required' });
@@ -292,12 +315,16 @@ export const startOffer = async (req, res) => {
     const resolvedUserId = uRows[0].id;
     const userLocation = uRows[0].location;
 
-    // 1. Fetch the offer to verify caps and targeting
-    const [offerRows] = await pool.query('SELECT daily_completion_cap, country_targeting FROM offers WHERE id = ? LIMIT 1', [offer_id]);
+    // 1. Fetch the offer to verify caps, targeting and get tracking_url
+    const [offerRows] = await pool.query(
+      'SELECT daily_completion_cap, country_targeting, tracking_url FROM offers WHERE id = ? LIMIT 1', 
+      [offer_id]
+    );
     if (offerRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Offer not found' });
     }
     const offer = offerRows[0];
+    const trackingUrl = offer.tracking_url || '';
 
     // Check completion cap
     const cap = parseInt(offer.daily_completion_cap || 0);
@@ -327,6 +354,60 @@ export const startOffer = async (req, res) => {
       }
     }
 
+    // Helper: Substitute all tracking placeholders
+    const resolveTrackingUrl = (rawUrl, clickId) => {
+      if (!rawUrl) return '';
+      let url = rawUrl;
+      
+      // Click ID replacements
+      url = url.replace(/{click_id}/g, clickId)
+               .replace(/{clickId}/g, clickId)
+               .replace(/{TRANS_ID}/g, clickId)
+               .replace(/{trans_id}/g, clickId);
+
+      // GUID/GAID replacements (Using Google Ads ID / gaid for guid placeholders)
+      const guidValue = gaid || '';
+      url = url.replace(/{guid}/g, guidValue)
+               .replace(/{GUID}/g, guidValue);
+
+      // User ID replacements
+      url = url.replace(/{user_id}/g, userId)
+               .replace(/{userId}/g, userId)
+               .replace(/{USER_ID}/g, userId)
+               .replace(/{UID}/g, userId)
+               .replace(/{uid}/g, userId);
+
+      // GAID replacements
+      if (gaid) {
+        url = url.replace(/{gaid}/g, gaid)
+                 .replace(/{GAID}/g, gaid)
+                 .replace(/{ad_id}/g, gaid)
+                 .replace(/{AD_ID}/g, gaid);
+      } else {
+        url = url.replace(/{gaid}/g, '')
+                 .replace(/{GAID}/g, '')
+                 .replace(/{ad_id}/g, '')
+                 .replace(/{AD_ID}/g, '');
+      }
+
+      // Device Model replacements
+      if (device_model) {
+        try {
+          const encodedModel = encodeURIComponent(device_model);
+          url = url.replace(/{device_model}/g, encodedModel)
+                   .replace(/{DEVICE_MODEL}/g, encodedModel);
+        } catch (e) {
+          url = url.replace(/{device_model}/g, device_model)
+                   .replace(/{DEVICE_MODEL}/g, device_model);
+        }
+      } else {
+        url = url.replace(/{device_model}/g, '')
+                 .replace(/{DEVICE_MODEL}/g, '');
+      }
+
+      return url;
+    };
+
     // 2. Check if already started
     const [progressRows] = await pool.query(
       'SELECT click_id FROM user_offer_progress WHERE user_id = ? AND offer_id = ? LIMIT 1',
@@ -334,7 +415,14 @@ export const startOffer = async (req, res) => {
     );
 
     if (progressRows.length > 0) {
-      return res.json({ success: true, click_id: progressRows[0].click_id });
+      const clickId = progressRows[0].click_id;
+      const finalUrl = resolveTrackingUrl(trackingUrl, clickId);
+      return res.json({ 
+        success: true, 
+        message: 'Offer already started', 
+        click_id: clickId, 
+        url: finalUrl 
+      });
     }
 
     // 3. Generate new UUID for click_id
@@ -347,7 +435,13 @@ export const startOffer = async (req, res) => {
       [uuidv4(), clickId, resolvedUserId, offer_id]
     );
 
-    res.json({ success: true, click_id: clickId });
+    const finalUrl = resolveTrackingUrl(trackingUrl, clickId);
+    res.json({ 
+      success: true, 
+      message: 'Offer started successfully', 
+      click_id: clickId, 
+      url: finalUrl 
+    });
   } catch (error) {
     console.error('Start Offer Error:', error);
     res.status(500).json({ success: false, message: 'Server error: ' + error.message });
@@ -358,12 +452,16 @@ export const startOffer = async (req, res) => {
 export const likeOffer = async (req, res) => {
   try {
     const userId = req.user.id;
-    const offerId = req.params.id;
+    const offerId = req.params.id || req.body.offer_id;
+
+    if (!offerId) {
+      return res.status(400).json({ success: false, message: 'Offer ID is required' });
+    }
 
     // Ensure offer_likes table exists
     await pool.query(
       `CREATE TABLE IF NOT EXISTS offer_likes (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id CHAR(36) PRIMARY KEY,
         user_id CHAR(36) NOT NULL,
         offer_id CHAR(36) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -382,7 +480,8 @@ export const likeOffer = async (req, res) => {
     }
 
     // 2. Log like and increment count
-    await pool.query('INSERT INTO offer_likes (user_id, offer_id) VALUES (?, ?)', [userId, offerId]);
+    const likeId = uuidv4();
+    await pool.query('INSERT INTO offer_likes (id, user_id, offer_id) VALUES (?, ?, ?)', [likeId, userId, offerId]);
     await pool.query('UPDATE offers SET likes_count = likes_count + 1 WHERE id = ?', [offerId]);
 
     res.json({ success: true, message: 'Offer liked successfully' });
@@ -438,8 +537,13 @@ export const getHotOffers = async (req, res) => {
     const params = [];
 
     if (user_id) {
+      const [uRows] = await pool.query(
+        'SELECT id FROM users WHERE id = ? OR uid = ? OR user_id = ? LIMIT 1',
+        [user_id, user_id, user_id]
+      );
+      const resolvedUserId = uRows.length > 0 ? uRows[0].id : user_id;
       query += " AND id NOT IN (SELECT offer_id FROM user_offer_progress WHERE user_id = ? AND status = 'COMPLETED')";
-      params.push(user_id);
+      params.push(resolvedUserId);
     }
 
     query += ' ORDER BY created_at DESC LIMIT 20';
@@ -453,7 +557,7 @@ export const getHotOffers = async (req, res) => {
     // Fetch all tiers for these offers
     const offerIds = offers.map(o => o.id);
     const [tiers] = await pool.query(
-      'SELECT id, offer_id, tier_title, app_tier_title, reward, status, steps FROM offer_tiers WHERE offer_id IN (?) ORDER BY id ASC',
+      'SELECT id, offer_id, tier_title, app_tier_title, reward, status, steps, sequence FROM offer_tiers WHERE offer_id IN (?) ORDER BY sequence ASC, id ASC',
       [offerIds]
     );
 

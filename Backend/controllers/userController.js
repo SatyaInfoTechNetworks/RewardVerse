@@ -44,7 +44,29 @@ export const getUserProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.json({ success: true, user: rows[0] });
+    const user = rows[0];
+
+    // Query stats in parallel for high performance
+    const [
+      [earningsRow],
+      [withdrawnRow],
+      [completedRow],
+      [referralsRow]
+    ] = await Promise.all([
+      pool.query('SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE user_id = ? AND type = "CREDIT"', [userId]),
+      pool.query('SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE user_id = ? AND type = "DEBIT" AND source = "WITHDRAWAL"', [userId]),
+      pool.query('SELECT COUNT(*) as count FROM user_offer_progress WHERE user_id = ? AND status = "COMPLETED"', [userId]),
+      pool.query('SELECT COUNT(*) as count FROM referral_uses WHERE referrer_id = ?', [userId])
+    ]);
+
+    user.stats = {
+      totalEarnings: parseFloat(earningsRow[0].total || 0),
+      totalWithdrawn: parseFloat(withdrawnRow[0].total || 0),
+      completedOffers: parseInt(completedRow[0].count || 0),
+      totalReferrals: parseInt(referralsRow[0].count || 0)
+    };
+
+    res.json({ success: true, user });
   } catch (error) {
     console.error('Get Profile Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -621,8 +643,8 @@ export const claimVideoAdReward = async (req, res) => {
 const renderDeleteAccountHTML = (message = '', messageType = '') => {
   let alertHtml = '';
   if (message) {
-    const alertClass = messageType === 'success' 
-      ? 'bg-green-100 text-green-700' 
+    const alertClass = messageType === 'success'
+      ? 'bg-green-100 text-green-700'
       : (messageType === 'warning' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700');
     alertHtml = `
       <div class="mb-4 p-4 rounded ${alertClass}">
@@ -750,17 +772,23 @@ export const getAppConfig = async (req, res) => {
     const updateUrl = await getConfig('update_url', 'https://play.google.com/store/apps/details?id=com.satyainfotechnetworks.rewardverse');
     const updateMessage = await getConfig('update_message', 'A critical update is available!');
     const isMaintenance = await getConfig('is_maintenance', 'false');
+    const maintenanceMessage = await getConfig('maintenance_message', 'App is under maintenance. Please try again later.');
+
+    const configPayload = {
+      latest_version: latestVersion,
+      latest_version_code: parseInt(latestVersionCode),
+      force_update: forceUpdate === 'true',
+      update_url: updateUrl,
+      update_message: updateMessage,
+      is_maintenance: isMaintenance === 'true',
+      maintenance_mode: isMaintenance === 'true' ? "1" : "0",
+      maintenance_message: maintenanceMessage
+    };
 
     res.json({
       success: true,
-      data: {
-        latest_version: latestVersion,
-        latest_version_code: parseInt(latestVersionCode),
-        force_update: forceUpdate === 'true',
-        update_url: updateUrl,
-        update_message: updateMessage,
-        is_maintenance: isMaintenance === 'true'
-      }
+      configs: configPayload, // Mapped to Android GSON AppUpdateResponse model
+      data: configPayload    // Mapped to Web client structure
     });
   } catch (error) {
     console.error('Get App Config Error:', error);

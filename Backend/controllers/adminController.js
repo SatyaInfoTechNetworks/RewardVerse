@@ -2,16 +2,13 @@ import pool from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
 import { sendNotification, broadcastNotification, sendTopicNotification } from '../utils/notifications.js';
 import { recordLedgerTransaction } from '../utils/ledger.js';
+import { sendRedeemCodeEmail } from '../utils/email.js';
 
 // ==========================================
 // CORE AUDITING HELPER
 // ==========================================
 async function logAdminAction(connection, { adminId, actionType, targetId = null, payload = null, req = null }) {
   try {
-    let parsedAdminId = parseInt(adminId);
-    if (isNaN(parsedAdminId)) {
-      parsedAdminId = 0; // Default system admin ID
-    }
     const ipAddress = req ? (req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1') : '127.0.0.1';
     const userAgent = req ? req.headers['user-agent'] : null;
     const payloadStr = payload ? JSON.stringify(payload) : null;
@@ -19,7 +16,7 @@ async function logAdminAction(connection, { adminId, actionType, targetId = null
     await connection.query(
       `INSERT INTO admin_audit_logs (id, admin_id, action_type, target_id, payload, ip_address, user_agent, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [logId, parsedAdminId, actionType, targetId, payloadStr, ipAddress, userAgent]
+      [logId, adminId, actionType, targetId, payloadStr, ipAddress, userAgent]
     );
   } catch (err) {
     console.error('❌ Failed to log admin action:', err);
@@ -45,6 +42,44 @@ export const getAdminStats = async (req, res) => {
     const [pendingErasures]   = await pool.query('SELECT COUNT(*) as c FROM deletion_requests WHERE status = "PENDING"').catch(() => [[{c:0}]]);
     const [pendingProofs]     = await pool.query('SELECT COUNT(*) as c FROM user_offer_progress WHERE admin_status = "PENDING"');
 
+    // Fetch sources stats from transactions table grouped by source
+    const [todaySums] = await pool.query(
+      "SELECT source, COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'CREDIT' AND DATE(created_at) = CURDATE() GROUP BY source"
+    );
+    const [weeklySums] = await pool.query(
+      "SELECT source, COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'CREDIT' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY source"
+    );
+
+    const todayMap = {};
+    todaySums.forEach(r => { todayMap[(r.source || '').toUpperCase()] = parseFloat(r.total); });
+
+    const weeklyMap = {};
+    weeklySums.forEach(r => { weeklyMap[(r.source || '').toUpperCase()] = parseFloat(r.total); });
+
+    const providerPerformance = [];
+    const configSources = [
+      { key: 'LUCKY_SPIN', label: 'Lucky Spin', icon: 'https://cdn-icons-png.flaticon.com/512/3593/3593456.png', color: 'success' },
+      { key: 'STREAK_REWARD', label: 'Daily Streak', icon: 'https://cdn-icons-png.flaticon.com/512/4305/4305432.png', color: 'orange' },
+      { key: 'PUBSCALE', label: 'PubScale Wall', icon: 'https://pubscale.com/favicon.ico', color: 'primary' },
+      { key: 'CPX_RESEARCH', label: 'CPX Surveys', icon: 'https://cpx-research.com/assets/img/logo-cpx-research.png', color: 'indigo' },
+      { key: 'GROWDECK', label: 'GrowDeck Wall', icon: 'https://growdeck.com/favicon.ico', color: 'success' },
+      { key: 'ADJUMP', label: 'AdJump Wall', icon: 'https://adjump.com/favicon.ico', color: 'danger' },
+      { key: 'REAL_OPINION', label: 'Real Opinion', icon: 'https://realopinion.com/favicon.ico', color: 'warning' },
+      { key: 'OFFERMARU', label: 'OfferMaru Wall', icon: 'https://offermaru.com/favicon.ico', color: 'secondary' },
+      { key: 'OPINION_UNIVERSE', label: 'Opinion Universe', icon: 'https://i.ibb.co/zXgYqKB/opinionuniverse.png', color: 'info' }
+    ];
+
+    configSources.forEach(src => {
+      providerPerformance.push({
+        key: src.key,
+        label: src.label,
+        icon: src.icon,
+        color: src.color,
+        today: todayMap[src.key] || 0,
+        weekly: weeklyMap[src.key] || 0
+      });
+    });
+
     res.json({
       success: true,
       stats: {
@@ -61,7 +96,8 @@ export const getAdminStats = async (req, res) => {
         open_tickets: openTickets[0].c,
         pending_erasures: pendingErasures[0].c,
         pending_proofs: pendingProofs[0].c
-      }
+      },
+      providerPerformance
     });
   } catch (error) {
     console.error('Admin Stats Error:', error);
@@ -103,26 +139,6 @@ export const listUsers = async (req, res) => {
       [...params, parseInt(limit), offset]
     );
 
-    if (users.length > 0) {
-      const userIds = users.map(u => u.id);
-      const [fingerprints] = await pool.query(
-        'SELECT * FROM device_fingerprints WHERE user_id IN (?)',
-        [userIds]
-      );
-      // Group fingerprints by user_id
-      const fingerprintsMap = {};
-      fingerprints.forEach(fp => {
-        if (!fingerprintsMap[fp.user_id]) {
-          fingerprintsMap[fp.user_id] = [];
-        }
-        fingerprintsMap[fp.user_id].push(fp);
-      });
-      // Attach to users
-      users.forEach(u => {
-        u.fingerprints = fingerprintsMap[u.id] || [];
-      });
-    }
-
     res.json({
       success: true,
       users,
@@ -150,7 +166,16 @@ export const getUserTransactionsAdmin = async (req, res) => {
       'SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 200',
       [userId]
     );
-    res.json({ success: true, transactions: rows, user: user[0] || null });
+    const [fingerprints] = await pool.query(
+      'SELECT * FROM device_fingerprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+    res.json({ 
+      success: true, 
+      transactions: rows, 
+      user: user[0] || null,
+      device_fingerprint: fingerprints[0] || null
+    });
   } catch (error) {
     console.error('Admin Get User Ledger Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -217,7 +242,8 @@ export const updateUser = async (req, res) => {
     const { 
       name, email, phone_number, location, referral_code, balance,
       android_id, fcm_token, daily_spins_count, current_streak,
-      referred_by, user_id, uid
+      referred_by, user_id, uid,
+      device_model, os_version, app_version, ip_address, is_emulator
     } = req.body;
 
     await connection.beginTransaction();
@@ -265,7 +291,29 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    // Update user row
+    // Resolve referred_by from Referral Code, public Hex ID, or UUID to database UUID
+    let referredByUuid = null;
+    if (referred_by !== undefined) {
+      if (referred_by === '' || referred_by === null) {
+        referredByUuid = null;
+      } else {
+        const [lookupRows] = await connection.query(
+          `SELECT id FROM users WHERE id = ? OR referral_code = ? OR user_id = ? LIMIT 1`,
+          [referred_by, referred_by, referred_by]
+        );
+        if (lookupRows.length > 0) {
+          referredByUuid = lookupRows[0].id;
+        } else {
+          await connection.rollback();
+          return res.status(400).json({ 
+            success: false, 
+            message: `User "${referred_by}" not found. Please enter a valid Referral Code, Public Hex ID, or Database UUID.` 
+          });
+        }
+      }
+    } else {
+      referredByUuid = user.referred_by;
+    }    // Update user row
     await connection.query(
       `UPDATE users SET 
         name = ?, 
@@ -285,37 +333,54 @@ export const updateUser = async (req, res) => {
       [
         name !== undefined ? name : user.name,
         email !== undefined ? email : user.email,
-        phone_number !== undefined ? phone_number : user.phone_number,
-        location !== undefined ? location : user.location,
+        phone_number !== undefined ? (phone_number === '' ? null : phone_number) : user.phone_number,
+        location !== undefined ? (location === '' ? null : location) : user.location,
         referral_code !== undefined ? referral_code : user.referral_code,
         balance !== undefined ? parseFloat(balance) : user.balance,
-        android_id !== undefined ? android_id : user.android_id,
-        fcm_token !== undefined ? fcm_token : user.fcm_token,
+        android_id !== undefined ? (android_id === '' ? null : android_id) : user.android_id,
+        fcm_token !== undefined ? (fcm_token === '' ? null : fcm_token) : user.fcm_token,
         daily_spins_count !== undefined ? parseInt(daily_spins_count || 0) : user.daily_spins_count,
         current_streak !== undefined ? parseInt(current_streak || 0) : user.current_streak,
-        referred_by !== undefined ? referred_by : user.referred_by,
+        referredByUuid,
         user_id !== undefined ? user_id : user.user_id,
         uid !== undefined ? uid : user.uid,
         userId
       ]
     );
 
-    // Sync device_fingerprints if android_id is updated by admin
-    if (android_id !== undefined && android_id !== user.android_id) {
-      if (android_id === '' || android_id === null) {
+    // Update/Insert Device Fingerprint in transaction
+    if (android_id !== undefined || device_model !== undefined || os_version !== undefined || app_version !== undefined || ip_address !== undefined || is_emulator !== undefined) {
+      const [existingDf] = await connection.query('SELECT * FROM device_fingerprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId]);
+      
+      const dfAndroidId = android_id !== undefined ? (android_id === '' ? null : android_id) : (existingDf[0] ? existingDf[0].android_id : null);
+      
+      if (!dfAndroidId) {
+        // If android_id is empty/null, delete device fingerprints for this user
         await connection.query('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
       } else {
-        const [fpRows] = await connection.query('SELECT id FROM device_fingerprints WHERE user_id = ? LIMIT 1', [userId]);
-        if (fpRows.length > 0) {
+        const dfModel = device_model !== undefined ? device_model : (existingDf[0] ? existingDf[0].device_model : null);
+        const dfOs = os_version !== undefined ? os_version : (existingDf[0] ? existingDf[0].os_version : null);
+        const dfApp = app_version !== undefined ? app_version : (existingDf[0] ? existingDf[0].app_version : null);
+        const dfIp = ip_address !== undefined ? ip_address : (existingDf[0] ? existingDf[0].ip_address : '127.0.0.1');
+        const dfEmulator = is_emulator !== undefined ? (is_emulator ? 1 : 0) : (existingDf[0] ? existingDf[0].is_emulator : 0);
+
+        if (existingDf.length > 0) {
           await connection.query(
-            'UPDATE device_fingerprints SET android_id = ? WHERE user_id = ?',
-            [android_id, userId]
+            `UPDATE device_fingerprints SET 
+              android_id = ?, 
+              device_model = ?, 
+              os_version = ?, 
+              app_version = ?, 
+              ip_address = ?, 
+              is_emulator = ? 
+             WHERE id = ?`,
+            [dfAndroidId, dfModel, dfOs, dfApp, dfIp, dfEmulator, existingDf[0].id]
           );
         } else {
-          const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
           await connection.query(
-            'INSERT INTO device_fingerprints (id, user_id, android_id, ip_address, created_at) VALUES (?, ?, ?, ?, NOW())',
-            [uuidv4(), userId, android_id, ipAddress]
+            `INSERT INTO device_fingerprints (id, user_id, android_id, device_model, os_version, app_version, ip_address, is_emulator, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [uuidv4(), userId, dfAndroidId, dfModel, dfOs, dfApp, dfIp, dfEmulator]
           );
         }
       }
@@ -327,7 +392,7 @@ export const updateUser = async (req, res) => {
       adminId,
       actionType: 'UPDATE_USER_INFO',
       targetId: userId,
-      payload: { name, email, phone_number, location, referral_code, balance, android_id, fcm_token, daily_spins_count, current_streak, referred_by, user_id, uid },
+      payload: { name, email, phone_number, location, referral_code, balance, android_id, fcm_token, daily_spins_count, current_streak, referred_by, user_id, uid, device_model, os_version, app_version, ip_address, is_emulator },
       req
     });
 
@@ -413,24 +478,6 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' }); 
     }
 
-    const ignoreErrorQuery = async (queryStr, params) => {
-      try { await connection.query(queryStr, params); } catch (e) {}
-    };
-
-    await ignoreErrorQuery('DELETE FROM user_spin_stats WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM user_streak_stats WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM user_data_entry_stats WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM streaks WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM lucky_spins WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM lifafa_claims WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM telegram_verification WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM contest_entries WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM contest_participants WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM contest_winners WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM offer_completions WHERE user_id = ?', [userId]);
-    await ignoreErrorQuery('DELETE FROM user_visit_progress WHERE user_id = ?', [userId]);
-
     await connection.query('DELETE FROM transactions WHERE user_id = ?', [userId]);
     await connection.query('DELETE FROM withdrawals WHERE user_id = ?', [userId]);
     await connection.query('DELETE FROM user_offer_progress WHERE user_id = ?', [userId]);
@@ -456,40 +503,6 @@ export const deleteUser = async (req, res) => {
     console.error('Delete User Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   } finally { connection.release(); }
-};
-
-export const deleteDeviceFingerprint = async (req, res) => {
-  const connection = await pool.getConnection();
-  try {
-    const { id } = req.params;
-    await connection.beginTransaction();
-
-    const [fpRows] = await connection.query('SELECT * FROM device_fingerprints WHERE id = ? LIMIT 1 FOR UPDATE', [id]);
-    if (fpRows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({ success: false, message: 'Fingerprint not found' });
-    }
-
-    await connection.query('DELETE FROM device_fingerprints WHERE id = ?', [id]);
-
-    const adminId = req.admin && req.admin.id ? req.admin.id : 'admin';
-    await logAdminAction(connection, {
-      adminId,
-      actionType: 'DELETE_DEVICE_FINGERPRINT',
-      targetId: id,
-      payload: fpRows[0],
-      req
-    });
-
-    await connection.commit();
-    res.json({ success: true, message: 'Device fingerprint cleared successfully' });
-  } catch (error) {
-    await connection.rollback();
-    console.error('Delete Fingerprint Error:', error);
-    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
-  } finally {
-    connection.release();
-  }
 };
 
 // ==========================================
@@ -653,29 +666,47 @@ export const listAdminOffers = async (req, res) => {
 // ==========================================
 export const listWithdrawals = async (req, res) => {
   try {
-    const { status = 'PENDING', page = 1, limit = 50 } = req.query;
+    const { status = 'PENDING', page = 1, limit = 50, search = '' } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereClause = '';
     const params = [];
+    const conditions = [];
+
     if (status && status !== 'ALL') {
-      whereClause = 'WHERE w.status = ?';
+      conditions.push('w.status = ?');
       params.push(status);
     }
 
+    if (search && search.trim() !== '') {
+      conditions.push('(u.name LIKE ? OR u.email LIKE ? OR w.details LIKE ? OR w.method LIKE ? OR w.id LIKE ?)');
+      const searchWildcard = `%${search.trim()}%`;
+      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
+    }
+
+    if (conditions.length > 0) {
+      whereClause = 'WHERE ' + conditions.join(' AND ');
+    }
+
     const [rows] = await pool.query(
-      `SELECT w.id, w.user_id, w.amount, 
+      `SELECT w.id, w.user_id, w.amount, w.method_id, w.redeem_code,
               COALESCE(w.amount_coins, w.amount) as amount_coins, 
               COALESCE(w.amount_currency, w.amount * 0.01) as amount_currency, 
               w.method, w.details, w.status, w.created_at,
-              u.name as user_name, u.email as user_email, u.user_id as user_public_id
-       FROM withdrawals w JOIN users u ON w.user_id = u.id
+              u.name as user_name, u.email as user_email, u.user_id as user_public_id,
+              pm.requires_redeem_code
+       FROM withdrawals w 
+       JOIN users u ON w.user_id = u.id
+       LEFT JOIN payout_methods pm ON w.method_id = pm.id
        ${whereClause}
        ORDER BY w.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
     );
 
-    const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM withdrawals w ${whereClause}`, params);
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) as total FROM withdrawals w JOIN users u ON w.user_id = u.id ${whereClause}`, 
+      params
+    );
 
     res.json({ success: true, withdrawals: rows, total: countRows[0].total });
   } catch (error) {
@@ -688,17 +719,76 @@ export const approveWithdrawal = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const withdrawalId = req.params.id;
+    const { redeem_code } = req.body;
     await connection.beginTransaction();
 
-    const [rows] = await connection.query('SELECT * FROM withdrawals WHERE id = ? FOR UPDATE', [withdrawalId]);
-    if (rows.length === 0) { await connection.rollback(); return res.status(404).json({ success: false, message: 'Withdrawal not found' }); }
-    if (rows[0].status !== 'PENDING') { await connection.rollback(); return res.status(400).json({ success: false, message: 'Already processed' }); }
+    const [rows] = await connection.query(
+      `SELECT w.*, pm.requires_redeem_code, u.email as user_email, u.name as user_name
+       FROM withdrawals w 
+       JOIN users u ON w.user_id = u.id
+       LEFT JOIN payout_methods pm ON w.method_id = pm.id
+       WHERE w.id = ? FOR UPDATE`,
+      [withdrawalId]
+    );
 
-    await connection.query('UPDATE withdrawals SET status = "APPROVED" WHERE id = ?', [withdrawalId]);
+    if (rows.length === 0) { 
+      await connection.rollback(); 
+      return res.status(404).json({ success: false, message: 'Withdrawal not found' }); 
+    }
+    const withdrawal = rows[0];
+
+    if (withdrawal.status !== 'PENDING') { 
+      await connection.rollback(); 
+      return res.status(400).json({ success: false, message: 'Already processed' }); 
+    }
+
+    if (withdrawal.requires_redeem_code && (!redeem_code || !redeem_code.trim())) {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: 'Redeem code is required to approve this payout method.' });
+    }
+
+    await connection.query('UPDATE withdrawals SET status = "APPROVED", redeem_code = ? WHERE id = ?', [redeem_code || null, withdrawalId]);
     await connection.commit();
 
-    const displayVal = parseFloat(rows[0].amount_currency || (rows[0].amount * 0.01)).toFixed(2);
-    await sendNotification(rows[0].user_id, 'Withdrawal Settled', `Your payout of ₹${displayVal} has been processed!`);
+    const displayVal = parseFloat(withdrawal.amount_currency || (withdrawal.amount * 0.01)).toFixed(2);
+    
+    // Send push notification containing redeem code if present
+    let pushMessage = `Your payout of ₹${displayVal} has been processed!`;
+    if (redeem_code) {
+      pushMessage = `Your redeem code for ${withdrawal.method} is: ${redeem_code}`;
+    }
+    await sendNotification(withdrawal.user_id, 'Withdrawal Settled', pushMessage);
+
+    // Send email containing the code if present
+    if (redeem_code) {
+      let targetEmail = withdrawal.user_email;
+      try {
+        const detailsObj = typeof withdrawal.details === 'string' && (withdrawal.details.startsWith('{') || withdrawal.details.startsWith('['))
+          ? JSON.parse(withdrawal.details)
+          : withdrawal.details;
+
+        if (detailsObj && typeof detailsObj === 'object') {
+          for (const key of Object.keys(detailsObj)) {
+            const val = String(detailsObj[key]).trim();
+            if (val.includes('@')) {
+              targetEmail = val;
+              break;
+            }
+          }
+        } else if (typeof detailsObj === 'string' && detailsObj.includes('@')) {
+          targetEmail = detailsObj.trim();
+        }
+      } catch (err) {
+        console.error('Failed to parse details for email extraction:', err);
+      }
+
+      try {
+        await sendRedeemCodeEmail(targetEmail, withdrawal.user_name, withdrawal.method, redeem_code, displayVal);
+      } catch (emailErr) {
+        console.error('Failed to send redeem code email:', emailErr.message);
+      }
+    }
+
     res.json({ success: true, message: 'Withdrawal approved' });
   } catch (error) {
     await connection.rollback();
@@ -769,24 +859,6 @@ export const approveErasureRequest = async (req, res) => {
     }
 
     if (userId) {
-      const ignoreErrorQuery = async (queryStr, params) => {
-        try { await connection.query(queryStr, params); } catch (e) {}
-      };
-
-      await ignoreErrorQuery('DELETE FROM user_spin_stats WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM user_streak_stats WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM user_data_entry_stats WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM streaks WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM lucky_spins WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM lifafa_claims WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM telegram_verification WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM contest_entries WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM contest_participants WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM contest_winners WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM offer_completions WHERE user_id = ?', [userId]);
-      await ignoreErrorQuery('DELETE FROM user_visit_progress WHERE user_id = ?', [userId]);
-
       await connection.query('DELETE FROM transactions WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM withdrawals WHERE user_id = ?', [userId]);
       await connection.query('DELETE FROM user_offer_progress WHERE user_id = ?', [userId]);
@@ -826,6 +898,7 @@ export const triggerPushNotification = async (req, res) => {
 
     const targetType = target_type || (user_id ? 'specific' : 'broadcast');
     let sentCount = 0;
+    let pushStats = null;
 
     if (targetType === 'specific') {
       if (!user_id) return res.status(400).json({ success: false, message: 'User ID is required for specific targeting' });
@@ -834,17 +907,23 @@ export const triggerPushNotification = async (req, res) => {
       if (userRows.length === 0) return res.status(404).json({ success: false, message: 'Target user not found' });
       const success = await sendNotification(userRows[0].id, title, body, image_url);
       sentCount = success ? 1 : 0;
+      pushStats = { total: 1, success: success ? 1 : 0, failure: success ? 0 : 1 };
     } else if (targetType === 'topic') {
       if (!topic) return res.status(400).json({ success: false, message: 'Topic name is required' });
       const success = await sendTopicNotification(topic, title, body, image_url);
       sentCount = success ? 1 : 0;
+      pushStats = { total: 1, success: success ? 1 : 0, failure: success ? 0 : 1 };
     } else {
-      const success = await broadcastNotification(title, body, image_url);
-      const [cnt] = await pool.query('SELECT COUNT(*) as c FROM users WHERE fcm_token IS NOT NULL AND fcm_token != ""');
-      sentCount = success ? cnt[0].c : 0;
+      const result = await broadcastNotification(title, body, image_url);
+      sentCount = result.success ? result.sentCount : 0;
+      pushStats = result.success ? {
+        total: result.sentCount,
+        success: result.successCount,
+        failure: result.failureCount
+      } : null;
     }
 
-    res.json({ success: true, message: `Notification sent successfully`, sent_count: sentCount });
+    res.json({ success: true, message: `Notification sent successfully`, sent_count: sentCount, stats: pushStats });
   } catch (error) {
     console.error('Admin Push Notification Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -882,35 +961,12 @@ export const createBanner = async (req, res) => {
     const { title, description, image_url, action_url, display_order, is_active } = req.body;
     if (!image_url) return res.status(400).json({ success: false, message: 'Image URL is required' });
 
-    const activeValue = is_active !== false ? 1 : 0;
-    const orderValue = parseInt(display_order || 0);
-    let result;
-    try {
-      // Modern schema: is_active + display_order
-      [result] = await pool.query(
-        `INSERT INTO banners (title, description, image_url, action_url, display_order, order_index, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [title || '', description || '', image_url, action_url || '', orderValue, orderValue, activeValue]
-      );
-    } catch (insertErr) {
-      if (insertErr.code === 'ER_NO_DEFAULT_FOR_FIELD' || insertErr.code === 'ER_BAD_FIELD_ERROR' || insertErr.errno === 1364 || insertErr.errno === 1054) {
-        try {
-          // Legacy schema variant: has order_index + active
-          [result] = await pool.query(
-            `INSERT INTO banners (title, description, image_url, action_url, order_index, active, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-            [title || '', description || '', image_url, action_url || '', orderValue, activeValue]
-          );
-        } catch (legacyErr) {
-          // Last resort: minimal insert
-          [result] = await pool.query(
-            `INSERT INTO banners (title, description, image_url, action_url, created_at) VALUES (?, ?, ?, ?, NOW())`,
-            [title || '', description || '', image_url, action_url || '']
-          );
-        }
-      } else {
-        throw insertErr;
-      }
-    }
-    res.json({ success: true, message: 'Banner created', id: result.insertId });
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO banners (id, title, description, image_url, action_url, display_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [id, title || '', description || '', image_url, action_url || '', parseInt(display_order || 0), is_active !== false ? 1 : 0]
+    );
+    res.json({ success: true, message: 'Banner created', id });
   } catch (error) {
     console.error('Create Banner Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -921,25 +977,10 @@ export const updateBanner = async (req, res) => {
   try {
     const bannerId = req.params.id;
     const { title, description, image_url, action_url, display_order, is_active } = req.body;
-    const orderValue = parseInt(display_order || 0);
-    const activeValue = is_active ? 1 : 0;
-    try {
-      // Modern schema
-      await pool.query(
-        `UPDATE banners SET title=?, description=?, image_url=?, action_url=?, display_order=?, order_index=?, is_active=? WHERE id=?`,
-        [title || '', description || '', image_url || '', action_url || '', orderValue, orderValue, activeValue, bannerId]
-      );
-    } catch (updateErr) {
-      if (updateErr.code === 'ER_BAD_FIELD_ERROR' || updateErr.errno === 1054) {
-        // Legacy schema: update order_index + active
-        await pool.query(
-          `UPDATE banners SET title=?, description=?, image_url=?, action_url=?, order_index=?, active=? WHERE id=?`,
-          [title || '', description || '', image_url || '', action_url || '', orderValue, activeValue, bannerId]
-        );
-      } else {
-        throw updateErr;
-      }
-    }
+    await pool.query(
+      `UPDATE banners SET title=?, description=?, image_url=?, action_url=?, display_order=?, is_active=? WHERE id=?`,
+      [title || '', description || '', image_url || '', action_url || '', parseInt(display_order || 0), is_active ? 1 : 0, bannerId]
+    );
     res.json({ success: true, message: 'Banner updated' });
   } catch (error) {
     console.error('Update Banner Error:', error);
@@ -1003,7 +1044,7 @@ export const listPayoutMethods = async (req, res) => {
 export const createPayoutMethod = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const { id, name, description, icon_url, min_coins, conversion_rate, processing_time, is_active, input_type, input_label, input_placeholder, tiers } = req.body;
+    const { id, name, description, icon_url, min_coins, conversion_rate, processing_time, is_active, input_type, input_label, input_placeholder, tiers, requires_redeem_code } = req.body;
 
     if (!id || !name) {
       return res.status(400).json({ success: false, message: 'ID and Name are required' });
@@ -1012,8 +1053,8 @@ export const createPayoutMethod = async (req, res) => {
     await connection.beginTransaction();
 
     await connection.query(
-      `INSERT INTO payout_methods (id, name, description, icon_url, min_coins, conversion_rate, processing_time, is_active, input_type, input_label, input_placeholder)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO payout_methods (id, name, description, icon_url, min_coins, conversion_rate, processing_time, is_active, input_type, input_label, input_placeholder, requires_redeem_code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id.toLowerCase().trim(),
         name,
@@ -1025,7 +1066,8 @@ export const createPayoutMethod = async (req, res) => {
         is_active ? 1 : 0,
         input_type || 'text',
         input_label || 'Details',
-        input_placeholder || 'Enter details'
+        input_placeholder || 'Enter details',
+        requires_redeem_code ? 1 : 0
       ]
     );
 
@@ -1060,13 +1102,13 @@ export const updatePayoutMethod = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const methodId = req.params.id;
-    const { name, description, icon_url, min_coins, conversion_rate, processing_time, is_active, input_type, input_label, input_placeholder, tiers } = req.body;
+    const { name, description, icon_url, min_coins, conversion_rate, processing_time, is_active, input_type, input_label, input_placeholder, tiers, requires_redeem_code } = req.body;
     
     await connection.beginTransaction();
 
     await connection.query(
-      `UPDATE payout_methods SET name=?, description=?, icon_url=?, min_coins=?, conversion_rate=?, processing_time=?, is_active=?, input_type=?, input_label=?, input_placeholder=? WHERE id=?`,
-      [name, description, icon_url, parseInt(min_coins || 0), parseFloat(conversion_rate || 0), processing_time, is_active ? 1 : 0, input_type || 'text', input_label || 'Details', input_placeholder || 'Enter details', methodId]
+      `UPDATE payout_methods SET name=?, description=?, icon_url=?, min_coins=?, conversion_rate=?, processing_time=?, is_active=?, input_type=?, input_label=?, input_placeholder=?, requires_redeem_code=? WHERE id=?`,
+      [name, description, icon_url, parseInt(min_coins || 0), parseFloat(conversion_rate || 0), processing_time, is_active ? 1 : 0, input_type || 'text', input_label || 'Details', input_placeholder || 'Enter details', requires_redeem_code ? 1 : 0, methodId]
     );
 
     // Sync payout tiers atomically
@@ -1103,35 +1145,17 @@ export const updatePayoutMethod = async (req, res) => {
 export const getReferralSettings = async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM referral_settings LIMIT 1');
-    const defaultSettings = {
+    const defaults = {
       bonus_coins: 10,
       commission_percent: 10,
+      commission_enabled: 1,
       offers_required: 2,
       description_text: '',
-      referee_signup_bonus: 0,
-      referrer_reward_coins: 10,
-      referral_condition_type: 'MIN_TASKS',
-      referral_condition_threshold: 2,
-      is_commission_active: 1
+      reward_trigger: 'offers_completed',
+      coin_threshold: 500,
+      referrer_coins: 100
     };
-    
-    if (rows.length > 0) {
-      const s = rows[0];
-      res.json({ 
-        success: true, 
-        settings: {
-          ...defaultSettings,
-          ...s,
-          referee_signup_bonus: s.referee_signup_bonus ?? 0,
-          referrer_reward_coins: s.referrer_reward_coins ?? s.bonus_coins ?? 10,
-          referral_condition_type: s.referral_condition_type || 'MIN_TASKS',
-          referral_condition_threshold: s.referral_condition_threshold ?? s.offers_required ?? 2,
-          is_commission_active: s.is_commission_active !== undefined ? s.is_commission_active : 1
-        } 
-      });
-    } else {
-      res.json({ success: true, settings: defaultSettings });
-    }
+    res.json({ success: true, settings: rows[0] ? { ...defaults, ...rows[0] } : defaults });
   } catch (error) {
     console.error('Get Referral Settings Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -1140,57 +1164,62 @@ export const getReferralSettings = async (req, res) => {
 
 export const updateReferralSettings = async (req, res) => {
   try {
-    const { 
-      bonus_coins, 
-      commission_percent, 
-      offers_required, 
+    const {
+      bonus_coins,
+      commission_percent,
+      commission_enabled,
+      offers_required,
       description_text,
-      referee_signup_bonus,
-      referrer_reward_coins,
-      referral_condition_type,
-      referral_condition_threshold,
-      is_commission_active
+      reward_trigger,
+      coin_threshold,
+      referrer_coins
     } = req.body;
 
-    const [existing] = await pool.query('SELECT id FROM referral_settings LIMIT 1');
+    const validTriggers = ['offers_completed', 'first_withdrawal', 'coin_threshold'];
+    const trigger = validTriggers.includes(reward_trigger) ? reward_trigger : 'offers_completed';
+    const commEnabled = commission_enabled === undefined ? 1 : (commission_enabled ? 1 : 0);
 
-    const cleanRefereeSignupBonus = parseFloat(referee_signup_bonus !== undefined ? referee_signup_bonus : 0);
-    const cleanReferrerRewardCoins = parseFloat(referrer_reward_coins !== undefined ? referrer_reward_coins : (bonus_coins || 10));
-    const cleanConditionType = referral_condition_type || 'MIN_TASKS';
-    const cleanConditionThreshold = parseFloat(referral_condition_threshold !== undefined ? referral_condition_threshold : (offers_required || 2));
-    const cleanCommPercent = parseInt(commission_percent || 10);
-    const cleanDescription = description_text || '';
-    const cleanIsCommissionActive = is_commission_active !== undefined ? (is_commission_active ? 1 : 0) : 1;
+    const [existing] = await pool.query('SELECT id FROM referral_settings LIMIT 1');
 
     if (existing.length > 0) {
       await pool.query(
         `UPDATE referral_settings 
-         SET bonus_coins=?, commission_percent=?, offers_required=?, description_text=?,
-             referee_signup_bonus=?, referrer_reward_coins=?, referral_condition_type=?, referral_condition_threshold=?,
-             is_commission_active=? 
+         SET bonus_coins=?, commission_percent=?, commission_enabled=?, offers_required=?, description_text=?,
+             reward_trigger=?, coin_threshold=?, referrer_coins=?
          WHERE id=?`,
         [
-          cleanReferrerRewardCoins, cleanCommPercent, Math.round(cleanConditionThreshold), cleanDescription,
-          cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold,
-          cleanIsCommissionActive, existing[0].id
+          parseFloat(bonus_coins || 10),
+          parseInt(commission_percent || 10),
+          commEnabled,
+          parseInt(offers_required || 2),
+          description_text || '',
+          trigger,
+          parseFloat(coin_threshold || 500),
+          parseFloat(referrer_coins || 100),
+          existing[0].id
         ]
       );
     } else {
       await pool.query(
         `INSERT INTO referral_settings 
-          (bonus_coins, commission_percent, offers_required, description_text, referee_signup_bonus, referrer_reward_coins, referral_condition_type, referral_condition_threshold, is_commission_active) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (bonus_coins, commission_percent, commission_enabled, offers_required, description_text, reward_trigger, coin_threshold, referrer_coins) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          cleanReferrerRewardCoins, cleanCommPercent, Math.round(cleanConditionThreshold), cleanDescription,
-          cleanRefereeSignupBonus, cleanReferrerRewardCoins, cleanConditionType, cleanConditionThreshold,
-          cleanIsCommissionActive
+          parseFloat(bonus_coins || 10),
+          parseInt(commission_percent || 10),
+          commEnabled,
+          parseInt(offers_required || 2),
+          description_text || '',
+          trigger,
+          parseFloat(coin_threshold || 500),
+          parseFloat(referrer_coins || 100)
         ]
       );
     }
-    res.json({ success: true, message: 'Referral settings updated successfully' });
+    res.json({ success: true, message: 'Referral settings updated' });
   } catch (error) {
     console.error('Update Referral Settings Error:', error);
-    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -1715,6 +1744,46 @@ export const deleteTransactionAdmin = async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('Admin Delete Transaction Error:', error);
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteUserFingerprints = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const userId = req.params.id;
+    await connection.beginTransaction();
+
+    // 1. Fetch user to verify they exist
+    const [userRows] = await connection.query('SELECT name FROM users WHERE id = ? FOR UPDATE', [userId]);
+    if (userRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // 2. Clear android_id on users table
+    await connection.query('UPDATE users SET android_id = NULL WHERE id = ?', [userId]);
+
+    // 3. Delete all device_fingerprints rows for this user
+    await connection.query('DELETE FROM device_fingerprints WHERE user_id = ?', [userId]);
+
+    // 4. Record admin audit log
+    const adminId = req.admin && req.admin.id ? req.admin.id : 'admin';
+    await logAdminAction(connection, {
+      adminId,
+      actionType: 'DELETE_USER_FINGERPRINTS',
+      targetId: userId,
+      payload: { userId },
+      req
+    });
+
+    await connection.commit();
+    res.json({ success: true, message: 'User device fingerprints deleted successfully' });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Delete User Fingerprints Error:', error);
     res.status(500).json({ success: false, message: 'Server error: ' + error.message });
   } finally {
     connection.release();

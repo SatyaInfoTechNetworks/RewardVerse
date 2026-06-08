@@ -591,14 +591,14 @@ export default function AdminConfigs({ getHeaders, showNotice, API_BASE }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.75rem' }}>Critical Force?</label>
-                    <select className="glass-input" style={{ background: '#0a0b10', color: '#fff' }} value={forceUpdate} onChange={e => setForceUpdate(e.target.value)}>
+                    <select className="glass-input" value={forceUpdate} onChange={e => setForceUpdate(e.target.value)}>
                       <option value="true">Yes</option>
                       <option value="false">No</option>
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.75rem' }}>Maintenance Mode?</label>
-                    <select className="glass-input" style={{ background: '#0a0b10', color: '#fff' }} value={isMaintenance} onChange={e => setIsMaintenance(e.target.value)}>
+                    <select className="glass-input" value={isMaintenance} onChange={e => setIsMaintenance(e.target.value)}>
                       <option value="true">Enabled</option>
                       <option value="false">Disabled</option>
                     </select>

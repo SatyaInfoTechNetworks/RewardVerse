@@ -20,8 +20,7 @@ export default function DeleteAccount() {
       const res = await fetch(`${API_BASE}/api/user/delete-account`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ email, reason })
       });
@@ -70,9 +69,9 @@ export default function DeleteAccount() {
               fontWeight: 800,
               color: '#fff',
               fontSize: '1.2rem'
-            }}>R</div>
+            }}>S</div>
             <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#fff' }}>
-              Reward<span style={{ color: 'var(--primary)' }}>verse</span>
+              Rewardverse<span style={{ color: 'var(--primary)' }}>India</span>
             </span>
           </Link>
           <Link to="/" className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}>

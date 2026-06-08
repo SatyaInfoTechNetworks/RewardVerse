@@ -1,17 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { Percent, Save, RefreshCw, Users, Gift, Coins, ShieldCheck, ArrowRightLeft, HelpCircle } from 'lucide-react';
+import { Percent, Save, RefreshCw, Users, Gift, Coins, Target, ArrowDownCircle, TrendingUp, CheckCircle2 } from 'lucide-react';
+
+const TRIGGER_OPTIONS = [
+  {
+    value: 'offers_completed',
+    label: 'Offers Completed',
+    icon: <CheckCircle2 size={16} />,
+    description: 'Referrer gets bonus after the referred friend completes X number of offers/tasks.',
+    color: '#a855f7'
+  },
+  {
+    value: 'first_withdrawal',
+    label: 'First Withdrawal',
+    icon: <ArrowDownCircle size={16} />,
+    description: 'Referrer gets bonus when the referred friend makes their very first withdrawal.',
+    color: '#14b8a6'
+  },
+  {
+    value: 'coin_threshold',
+    label: 'Coin Threshold',
+    icon: <TrendingUp size={16} />,
+    description: "Referrer gets bonus when the referred friend's total earnings reach X coins.",
+    color: '#f59e0b'
+  }
+];
 
 export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
   const [settings, setSettings] = useState({
-    bonus_coins: '', // legacy
+    bonus_coins: '',
     commission_percent: '',
-    offers_required: '', // legacy
+    offers_required: '',
     description_text: '',
-    referee_signup_bonus: '',
-    referrer_reward_coins: '',
-    referral_condition_type: 'MIN_TASKS',
-    referral_condition_threshold: '',
-    is_commission_active: true
+    reward_trigger: 'offers_completed',
+    coin_threshold: '',
+    referrer_coins: '',
+    commission_enabled: true
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,16 +50,15 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
           commission_percent: data.settings.commission_percent ?? '',
           offers_required: data.settings.offers_required ?? '',
           description_text: data.settings.description_text ?? '',
-          referee_signup_bonus: data.settings.referee_signup_bonus ?? '',
-          referrer_reward_coins: data.settings.referrer_reward_coins ?? '',
-          referral_condition_type: data.settings.referral_condition_type ?? 'MIN_TASKS',
-          referral_condition_threshold: data.settings.referral_condition_threshold ?? '',
-          is_commission_active: data.settings.is_commission_active !== undefined ? Boolean(data.settings.is_commission_active) : true
+          reward_trigger: data.settings.reward_trigger || 'offers_completed',
+          coin_threshold: data.settings.coin_threshold ?? '',
+          referrer_coins: data.settings.referrer_coins ?? '',
+          commission_enabled: data.settings.commission_enabled !== false && data.settings.commission_enabled !== 0
         });
       }
     } catch (err) {
       console.error(err);
-      showNotice('error', 'Failed to fetch referral settings');
+      showNotice('error', 'Failed to load referral settings');
     }
     setLoading(false);
   };
@@ -51,23 +73,22 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
-          bonus_coins: parseFloat(settings.referrer_reward_coins || 0), // backward compatibility
+          bonus_coins: parseFloat(settings.bonus_coins || 0),
           commission_percent: parseFloat(settings.commission_percent || 0),
-          offers_required: parseInt(settings.referral_condition_threshold || 2), // backward compatibility
+          commission_enabled: settings.commission_enabled ? 1 : 0,
+          offers_required: parseInt(settings.offers_required || 0),
           description_text: settings.description_text,
-          referee_signup_bonus: parseFloat(settings.referee_signup_bonus || 0),
-          referrer_reward_coins: parseFloat(settings.referrer_reward_coins || 0),
-          referral_condition_type: settings.referral_condition_type,
-          referral_condition_threshold: parseFloat(settings.referral_condition_threshold || 0),
-          is_commission_active: settings.is_commission_active
+          reward_trigger: settings.reward_trigger,
+          coin_threshold: parseFloat(settings.coin_threshold || 0),
+          referrer_coins: parseFloat(settings.referrer_coins || 0)
         })
       });
       const data = await res.json();
       if (data.success) {
-        showNotice('success', 'Referral program configurations saved successfully!');
-        fetchSettings(); // Refresh preview metrics
+        showNotice('success', 'Referral settings saved successfully!');
+        fetchSettings(); // Reload to confirm persisted values
       } else {
-        showNotice('error', data.message);
+        showNotice('error', data.message || 'Failed to save');
       }
     } catch (err) {
       showNotice('error', 'Failed to save referral settings');
@@ -80,316 +101,256 @@ export default function AdminReferrals({ getHeaders, showNotice, API_BASE }) {
     onChange: (e) => setSettings({ ...settings, [key]: e.target.value })
   });
 
-  const getConditionLabel = () => {
-    switch (settings.referral_condition_type) {
-      case 'MIN_TASKS':
-        return `${settings.referral_condition_threshold || 0} Tasks Completed`;
-      case 'FIRST_REDEEM':
-        return 'First Withdrawal Made';
-      case 'LIFETIME_COINS':
-        return `${parseFloat(settings.referral_condition_threshold || 0).toFixed(0)} Coins Earned`;
-      default:
-        return '—';
-    }
-  };
+  const activeTrigger = TRIGGER_OPTIONS.find(t => t.value === settings.reward_trigger) || TRIGGER_OPTIONS[0];
 
   const metrics = [
-    { 
-      icon: <Gift size={20} style={{ color: '#ec4899' }} />, 
-      label: 'Referee Welcome Coins', 
-      value: settings.referee_signup_bonus || '0', 
-      unit: 'coins', 
-      gradient: 'linear-gradient(135deg, rgba(236,72,153,0.1) 0%, rgba(236,72,153,0.02) 100%)',
-      border: 'rgba(236,72,153,0.2)'
+    {
+      icon: <Gift size={20} />,
+      label: 'Signup Bonus (New User)',
+      value: settings.bonus_coins || '—',
+      unit: 'coins',
+      color: '#a855f7'
     },
-    { 
-      icon: <Coins size={20} style={{ color: '#3b82f6' }} />, 
-      label: 'Referrer Milestone Reward', 
-      value: settings.referrer_reward_coins || '0', 
-      unit: 'coins', 
-      gradient: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0.02) 100%)',
-      border: 'rgba(59,130,246,0.2)'
+    {
+      icon: <Percent size={20} />,
+      label: 'Commission %',
+      value: settings.commission_percent || '—',
+      unit: '%',
+      color: '#6366f1'
     },
-    { 
-      icon: <ShieldCheck size={20} style={{ color: '#10b981' }} />, 
-      label: 'Milestone Unlock Trigger', 
-      value: getConditionLabel(), 
-      unit: '', 
-      gradient: 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.02) 100%)',
-      border: 'rgba(16,185,129,0.2)'
+    {
+      icon: activeTrigger.icon,
+      label: 'Active Trigger',
+      value: activeTrigger.label,
+      unit: '',
+      color: activeTrigger.color
     },
-    { 
-      icon: <Percent size={20} style={{ color: '#f59e0b' }} />, 
-      label: 'Commission (Lifetime)', 
-      value: settings.commission_percent || '0', 
-      unit: '%', 
-      gradient: 'linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(245,158,11,0.02) 100%)',
-      border: 'rgba(245,158,11,0.2)'
-    },
+    {
+      icon: <Coins size={20} />,
+      label: 'Referrer Bonus',
+      value: settings.referrer_coins || '—',
+      unit: 'coins',
+      color: '#14b8a6'
+    }
   ];
 
   return (
-    <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
+    <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
         <div>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-primary)' }}>
-            <Percent size={20} style={{ color: 'var(--primary)' }} /> Referral System Configurator
+          <h3 style={{ fontSize: '1.15rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Target size={18} style={{ color: 'var(--primary)' }} /> Referral Reward Engine
           </h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
-            Set dynamic entry parameters, sign-up welcome bonuses, and custom milestone reward triggers.
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Configure how and when the referral system rewards referrers — choose your trigger mode.
           </p>
         </div>
-        <button 
-          className="btn btn-secondary" 
-          style={{ 
-            padding: '10px 18px', 
-            fontSize: '0.82rem', 
-            borderRadius: '10px', 
-            background: 'rgba(255,255,255,0.05)', 
-            border: '1px solid rgba(255,255,255,0.08)',
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease'
-          }} 
-          onClick={fetchSettings}
-        >
-          <RefreshCw size={14} /> Refresh System
+        <button className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '0.82rem' }} onClick={fetchSettings}>
+          <RefreshCw size={14} /> Refresh
         </button>
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-          <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '16px' }}></div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Loading dynamic rules configurations...</p>
-        </div>
+        <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>Loading referral settings...</p>
       ) : (
         <>
-          {/* Metrics Panel - Visual Grids */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
+          {/* Metrics Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '28px' }}>
             {metrics.map((m, i) => (
-              <div 
-                key={i} 
-                className="glass-panel" 
-                style={{ 
-                  padding: '24px 20px', 
-                  position: 'relative', 
-                  overflow: 'hidden', 
-                  background: m.gradient, 
-                  border: `1px solid ${m.border}`,
-                  borderRadius: '16px',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                  transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.2)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)'; }}
-              >
-                <div style={{ position: 'absolute', top: '20px', right: '20px', opacity: 0.1 }}>{React.cloneElement(m.icon, { size: 52 })}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                  <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '6px' }}>{m.icon}</div>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{m.label}</span>
+              <div key={i} className="glass-panel" style={{ padding: '18px', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: '12px', right: '12px', opacity: 0.07 }}>
+                  {React.cloneElement(m.icon, { size: 40 })}
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: m.color }}>
+                  {m.icon}
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{m.label}</span>
+                </div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: m.color }}>
                   {m.value}
-                  {m.unit && <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)' }}>{m.unit}</span>}
+                  {m.unit && <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: '4px' }}>{m.unit}</span>}
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Configuration Form */}
-          <div className="glass-panel" style={{ padding: '32px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
-            <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '24px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ArrowRightLeft size={16} style={{ color: 'var(--primary)' }} /> Edit Referral Rewards & Rules
+          {/* Settings Form */}
+          <div className="glass-panel" style={{ padding: '28px' }}>
+            <h4 style={{ fontSize: '1rem', marginBottom: '24px', borderBottom: '1px solid var(--border-glass)', paddingBottom: '12px' }}>
+              Update Referral Parameters
             </h4>
-            
-            <form onSubmit={handleSave} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-              
-              {/* Referee signup bonus */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                  <Gift size={14} style={{ color: '#ec4899' }} /> Referee Welcome Bonus (Coins)
-                </label>
-                <input
-                  type="number"
-                  className="glass-input"
-                  placeholder="e.g. 50"
-                  step="0.01"
-                  min="0"
-                  style={{ borderRadius: '10px', padding: '12px 14px' }}
-                  {...field('referee_signup_bonus')}
-                />
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  Credited to the <strong>referred friend</strong> immediately upon signup. Set to 0 to disable.
-                </p>
-              </div>
+            <form onSubmit={handleSave}>
 
-              {/* Referrer Milestone Reward */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                  <Coins size={14} style={{ color: '#3b82f6' }} /> Referrer Milestone Reward (Coins)
+              {/* ---- TRIGGER MODE SELECTOR ---- */}
+              <div style={{ marginBottom: '28px' }}>
+                <label className="form-label" style={{ marginBottom: '12px', display: 'block' }}>
+                  🎯 Referrer Reward Trigger — Choose when the referrer gets their bonus
                 </label>
-                <input
-                  type="number"
-                  className="glass-input"
-                  placeholder="e.g. 100"
-                  step="0.01"
-                  min="0"
-                  style={{ borderRadius: '10px', padding: '12px 14px' }}
-                  {...field('referrer_reward_coins')}
-                />
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  Credited to the <strong>referrer</strong> when their friend satisfies the dynamic milestone condition below.
-                </p>
-              </div>
-
-              {/* Dynamic condition selector */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                  <ShieldCheck size={14} style={{ color: '#10b981' }} /> Dynamic Milestone Condition Trigger
-                </label>
-                <select
-                  className="glass-input"
-                  style={{ 
-                    borderRadius: '10px', 
-                    padding: '12px 14px', 
-                    background: 'rgba(10,10,12,0.9)', 
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#fff',
-                    outline: 'none',
-                    width: '100%'
-                  }}
-                  {...field('referral_condition_type')}
-                >
-                  <option value="MIN_TASKS">Friend Completes Minimum Tasks/Offers</option>
-                  <option value="FIRST_REDEEM">Friend Submits/Completes First Redeem Request</option>
-                  <option value="LIFETIME_COINS">Friend Earning Reaches Lifetime Coin Threshold</option>
-                </select>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  Decide the dynamic milestone rules the referred user must meet to unlock referrer bonus coins.
-                </p>
-              </div>
-
-              {/* Threshold input (conditional visibility styling based on trigger type) */}
-              <div className="form-group" style={{ marginBottom: 0, opacity: settings.referral_condition_type === 'FIRST_REDEEM' ? 0.4 : 1, transition: 'all 0.3s ease' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                  <HelpCircle size={14} style={{ color: 'var(--primary)' }} /> Condition Threshold Value
-                </label>
-                <input
-                  type="number"
-                  className="glass-input"
-                  placeholder={settings.referral_condition_type === 'LIFETIME_COINS' ? 'e.g. 1000' : 'e.g. 2'}
-                  min="1"
-                  disabled={settings.referral_condition_type === 'FIRST_REDEEM'}
-                  style={{ borderRadius: '10px', padding: '12px 14px' }}
-                  {...field('referral_condition_threshold')}
-                />
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  {settings.referral_condition_type === 'FIRST_REDEEM' 
-                    ? 'No threshold parameter required for this condition (Always triggers on first redeem).'
-                    : settings.referral_condition_type === 'LIFETIME_COINS'
-                      ? 'Required lifetime coins earned by the referred friend before unlocking referrer coins (e.g. 1000).'
-                      : 'Required count of tasks/offers completions required before unlocking referrer coins (e.g. 2).'}
-                </p>
-              </div>
-
-              {/* Lifetime commission status toggle */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                  Referral Commission Status
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-                  <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px' }}>
-                    <input
-                      type="checkbox"
-                      checked={settings.is_commission_active}
-                      onChange={(e) => setSettings({ ...settings, is_commission_active: e.target.checked })}
-                      style={{ opacity: 0, width: 0, height: 0 }}
-                    />
-                    <span style={{
-                      position: 'absolute',
-                      cursor: 'pointer',
-                      top: 0, left: 0, right: 0, bottom: 0,
-                      backgroundColor: settings.is_commission_active ? 'var(--primary, #3b82f6)' : '#3f3f46',
-                      transition: '0.4s',
-                      borderRadius: '34px'
-                    }}>
-                      <span style={{
-                        position: 'absolute',
-                        height: '18px',
-                        width: '18px',
-                        left: settings.is_commission_active ? '28px' : '4px',
-                        bottom: '4px',
-                        backgroundColor: 'white',
-                        transition: '0.4s',
-                        borderRadius: '50%'
-                      }} />
-                    </span>
-                  </label>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: settings.is_commission_active ? '#10b981' : 'var(--text-muted)' }}>
-                    {settings.is_commission_active ? 'ENABLED' : 'DISABLED'}
-                  </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                  {TRIGGER_OPTIONS.map(opt => {
+                    const isActive = settings.reward_trigger === opt.value;
+                    return (
+                      <div
+                        key={opt.value}
+                        onClick={() => setSettings({ ...settings, reward_trigger: opt.value })}
+                        style={{
+                          padding: '16px',
+                          borderRadius: '12px',
+                          border: `2px solid ${isActive ? opt.color : 'var(--border-glass)'}`,
+                          background: isActive ? `${opt.color}15` : 'rgba(255,255,255,0.02)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          userSelect: 'none'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: isActive ? opt.color : 'var(--text-secondary)' }}>
+                          {opt.icon}
+                          <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{opt.label}</span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                          {opt.description}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  Turn the commission reward system ON or OFF globally.
-                </p>
               </div>
 
-              {/* Lifetime commission */}
-              <div className="form-group" style={{ marginBottom: 0, opacity: settings.is_commission_active ? 1 : 0.4, transition: 'all 0.3s ease' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                  <Percent size={14} style={{ color: '#f59e0b' }} /> Lifetime Commission Percent (%)
-                </label>
-                <input
-                  type="number"
-                  className="glass-input"
-                  placeholder="e.g. 10"
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  disabled={!settings.is_commission_active}
-                  style={{ borderRadius: '10px', padding: '12px 14px' }}
-                  {...field('commission_percent')}
-                />
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  The percentage of referred friend's task earnings credited to the referrer <strong>forever</strong>.
-                </p>
+              {/* ---- MAIN FIELDS GRID ---- */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+
+                {/* Signup Bonus */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Gift size={13} /> Signup Bonus Coins (New User)
+                  </label>
+                  <input type="number" className="glass-input" placeholder="e.g. 500" step="1" min="0" {...field('bonus_coins')} />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    Coins awarded to the NEW user when they sign up using a referral code.
+                  </p>
+                </div>
+
+                {/* Referrer Bonus */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Coins size={13} /> Referrer Bonus Coins (on milestone)
+                  </label>
+                  <input type="number" className="glass-input" placeholder="e.g. 100" step="1" min="0" {...field('referrer_coins')} />
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    Fixed coins credited to the referrer when the trigger milestone is achieved.
+                  </p>
+                </div>
+
+                {/* Commission % with Enable/Disable Toggle */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Percent size={13} /> Referrer Commission (% per offer)
+                    </label>
+                    {/* Toggle switch */}
+                    <div
+                      onClick={() => setSettings({ ...settings, commission_enabled: !settings.commission_enabled })}
+                      style={{
+                        position: 'relative',
+                        width: '44px',
+                        height: '24px',
+                        borderRadius: '12px',
+                        background: settings.commission_enabled ? '#a855f7' : 'rgba(255,255,255,0.12)',
+                        cursor: 'pointer',
+                        transition: 'background 0.25s ease',
+                        flexShrink: 0
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute',
+                        top: '3px',
+                        left: settings.commission_enabled ? '23px' : '3px',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        transition: 'left 0.25s ease',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
+                      }} />
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    className="glass-input"
+                    placeholder="e.g. 10"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    disabled={!settings.commission_enabled}
+                    style={{ opacity: settings.commission_enabled ? 1 : 0.4, cursor: settings.commission_enabled ? 'text' : 'not-allowed' }}
+                    {...field('commission_percent')}
+                  />
+                  <p style={{ fontSize: '0.72rem', color: settings.commission_enabled ? 'var(--text-muted)' : 'var(--danger)', marginTop: '6px' }}>
+                    {settings.commission_enabled
+                      ? '% of every offer reward earned by the referred friend, credited to referrer continuously.'
+                      : '⛔ Commission is disabled — referrers will not earn % on friend\'s offers.'}
+                  </p>
+                </div>
+
+                {/* Conditional field based on trigger */}
+                {settings.reward_trigger === 'offers_completed' && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Users size={13} /> Min. Offers to Trigger Bonus
+                    </label>
+                    <input type="number" className="glass-input" placeholder="e.g. 3" min="1" {...field('offers_required')} />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      Referred friend must complete this many offers for the referrer to get the bonus.
+                    </p>
+                  </div>
+                )}
+
+                {settings.reward_trigger === 'coin_threshold' && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <TrendingUp size={13} /> Coin Earnings Threshold
+                    </label>
+                    <input type="number" className="glass-input" placeholder="e.g. 500" step="1" min="1" {...field('coin_threshold')} />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      Referred friend must earn at least this many coins total to trigger the referrer's bonus.
+                    </p>
+                  </div>
+                )}
+
+                {settings.reward_trigger === 'first_withdrawal' && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <div style={{
+                      padding: '16px',
+                      borderRadius: '10px',
+                      background: 'rgba(20, 184, 166, 0.08)',
+                      border: '1px solid rgba(20, 184, 166, 0.2)'
+                    }}>
+                      <p style={{ fontSize: '0.82rem', color: '#14b8a6', margin: 0, fontWeight: 600 }}>
+                        ⚡ Auto Trigger on First Withdrawal
+                      </p>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
+                        The referrer will automatically receive the <strong>Referrer Bonus Coins</strong> the moment their referred friend makes their very first withdrawal request.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
               </div>
 
-              {/* Display text in app */}
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Referral Marketing Description (shown in mobile app)</label>
+              {/* Description Text */}
+              <div className="form-group" style={{ marginBottom: '24px' }}>
+                <label className="form-label">Referral Description Text (shown in app)</label>
                 <textarea
                   className="glass-input"
                   rows={3}
-                  placeholder="e.g. Invite friends and earn 100 coins + 10% commission on all their earnings forever!"
-                  style={{ borderRadius: '10px', padding: '12px 14px', resize: 'none' }}
+                  placeholder="e.g. Refer friends and earn 100 coins when they complete 3 offers!"
                   {...field('description_text')}
                 />
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', lineHeight: '1.3' }}>
-                  Promotional summary displayed directly to mobile users on the Referral & Share screen in the Android app.
-                </p>
               </div>
 
-              {/* Submit Buttons */}
-              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <button 
-                  type="submit" 
-                  className="btn btn-primary" 
-                  style={{ 
-                    padding: '12px 32px', 
-                    fontSize: '0.88rem', 
-                    fontWeight: 700, 
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 15px rgba(59,130,246,0.3)',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }} 
-                  disabled={saving}
-                >
-                  <Save size={16} /> {saving ? 'Saving Config...' : 'Apply Referral Configurations'}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="submit" className="btn btn-primary" style={{ padding: '11px 28px' }} disabled={saving}>
+                  <Save size={15} /> {saving ? 'Saving...' : 'Save Referral Settings'}
                 </button>
               </div>
             </form>
