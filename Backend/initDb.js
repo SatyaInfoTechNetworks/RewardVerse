@@ -527,6 +527,8 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'notifications', 'image_url', 'VARCHAR(255) NULL');
     await addColumnIfNotExists(connection, 'notifications', 'target_topic', 'VARCHAR(50) NULL');
     await addColumnIfNotExists(connection, 'notifications', 'status', 'VARCHAR(20) DEFAULT "sent"');
+    await addColumnIfNotExists(connection, 'notifications', 'success_count', 'INT DEFAULT 0');
+    await addColumnIfNotExists(connection, 'notifications', 'failure_count', 'INT DEFAULT 0');
 
     // referral_settings migrations
     await addColumnIfNotExists(connection, 'referral_settings', 'description_text', 'TEXT NULL');
@@ -535,6 +537,10 @@ export async function initializeDatabase() {
     await addColumnIfNotExists(connection, 'referral_settings', 'referral_condition_type', "VARCHAR(50) DEFAULT 'MIN_TASKS'");
     await addColumnIfNotExists(connection, 'referral_settings', 'referral_condition_threshold', 'DECIMAL(10, 2) DEFAULT 2.00');
     await addColumnIfNotExists(connection, 'referral_settings', 'is_commission_active', 'BOOLEAN DEFAULT TRUE');
+    await addColumnIfNotExists(connection, 'referral_settings', 'commission_enabled', 'TINYINT(1) DEFAULT 1');
+    await addColumnIfNotExists(connection, 'referral_settings', 'reward_trigger', "VARCHAR(50) DEFAULT 'offers_completed'");
+    await addColumnIfNotExists(connection, 'referral_settings', 'coin_threshold', 'DECIMAL(10, 2) DEFAULT 500.00');
+    await addColumnIfNotExists(connection, 'referral_settings', 'referrer_coins', 'DECIMAL(10, 2) DEFAULT 100.00');
 
     // 25. visit_earn_tasks Table
     await connection.query(`
