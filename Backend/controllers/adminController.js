@@ -697,7 +697,7 @@ export const listWithdrawals = async (req, res) => {
               pm.requires_redeem_code
        FROM withdrawals w 
        JOIN users u ON w.user_id = u.id
-       LEFT JOIN payout_methods pm ON w.method_id = pm.id
+       LEFT JOIN payout_methods pm ON w.method_id COLLATE utf8mb4_unicode_ci = pm.id COLLATE utf8mb4_unicode_ci
        ${whereClause}
        ORDER BY w.created_at DESC LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset]
@@ -726,7 +726,7 @@ export const approveWithdrawal = async (req, res) => {
       `SELECT w.*, pm.requires_redeem_code, u.email as user_email, u.name as user_name
        FROM withdrawals w 
        JOIN users u ON w.user_id = u.id
-       LEFT JOIN payout_methods pm ON w.method_id = pm.id
+       LEFT JOIN payout_methods pm ON w.method_id COLLATE utf8mb4_unicode_ci = pm.id COLLATE utf8mb4_unicode_ci
        WHERE w.id = ? FOR UPDATE`,
       [withdrawalId]
     );
