@@ -392,21 +392,39 @@ export const getPayoutMethods = async (req, res) => {
       });
     });
 
-    const formattedMethods = methods.map(m => ({
-      id: String(m.id),
-      name: m.name,
-      description: m.description,
-      iconUrl: m.icon_url,
-      minCoins: parseInt(m.min_coins || 0),
-      conversionRate: parseFloat(m.conversion_rate || 0),
-      currencySymbol: m.currency_symbol || '₹',
-      processingTime: m.processing_time || '24 Hours',
-      inputType: m.input_type || 'text',
-      inputLabel: m.input_label || 'Details',
-      inputPlaceholder: m.input_placeholder || 'Enter details',
-      isActive: Boolean(m.is_active),
-      tiers: tiersByMethod[m.id] || []
-    }));
+    const formattedMethods = methods.map(m => {
+      // Parse comma-separated custom inputs if they exist
+      const labels = (m.input_label || 'Details').split(',').map(s => s.trim());
+      const placeholders = (m.input_placeholder || 'Enter details').split(',').map(s => s.trim());
+      const types = (m.input_type || 'text').split(',').map(s => s.trim());
+      const maxLength = Math.max(labels.length, placeholders.length, types.length);
+      
+      const fields = [];
+      for (let i = 0; i < maxLength; i++) {
+        fields.push({
+          label: labels[i] || 'Details',
+          placeholder: placeholders[i] || 'Enter details',
+          type: types[i] || 'text'
+        });
+      }
+
+      return {
+        id: String(m.id),
+        name: m.name,
+        description: m.description,
+        iconUrl: m.icon_url,
+        minCoins: parseInt(m.min_coins || 0),
+        conversionRate: parseFloat(m.conversion_rate || 0),
+        currencySymbol: m.currency_symbol || '₹',
+        processingTime: m.processing_time || '24 Hours',
+        inputType: m.input_type || 'text',
+        inputLabel: m.input_label || 'Details',
+        inputPlaceholder: m.input_placeholder || 'Enter details',
+        fields: fields,
+        isActive: Boolean(m.is_active),
+        tiers: tiersByMethod[m.id] || []
+      };
+    });
 
     res.json({
       success: true,

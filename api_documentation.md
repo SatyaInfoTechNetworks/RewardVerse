@@ -299,7 +299,7 @@ Claim the coin reward after timer expiry.
 ## 💰 4. Wallet & Redemptions
 
 ### 4.1 Get Payout Methods
-Retrieve available payment methods (UPI, Paytm, Gift Cards) and conversion rules.
+Retrieve available payment methods (UPI, Paytm, Gift Cards, Bank Transfer) and conversion rules.
 * **Route**: `GET /api/wallet/payout-methods` (supports legacy `GET /api/wallet/payout_methods.php`)
 * **Success Response (JSON)**:
   ```json
@@ -315,22 +315,60 @@ Retrieve available payment methods (UPI, Paytm, Gift Cards) and conversion rules
         "conversion_rate": 0.1000,
         "currency_symbol": "₹",
         "input_label": "Enter UPI Address",
-        "input_placeholder": "example@ybl"
+        "input_placeholder": "example@ybl",
+        "input_type": "text",
+        "fields": [
+          { "label": "Enter UPI Address", "placeholder": "example@ybl", "type": "text" }
+        ]
+      },
+      {
+        "id": "bank_transfer",
+        "name": "Bank Transfer",
+        "description": "Direct bank transfer to your account.",
+        "icon_url": "https://...",
+        "min_coins": 5000,
+        "conversion_rate": 0.1000,
+        "currency_symbol": "₹",
+        "input_label": "Bank Name,Account Number,IFSC Code",
+        "input_placeholder": "e.g. SBI,e.g. 123456789,e.g. SBIN0001234",
+        "input_type": "text,number,text",
+        "fields": [
+          { "label": "Bank Name", "placeholder": "e.g. SBI", "type": "text" },
+          { "label": "Account Number", "placeholder": "e.g. 123456789", "type": "number" },
+          { "label": "IFSC Code", "placeholder": "e.g. SBIN0001234", "type": "text" }
+        ]
       }
     ]
   }
   ```
 
+> [!NOTE]
+> **Multiple Form Inputs:** For payout methods requiring multiple inputs (like Bank Transfer), the backend parses the comma-separated parameters and returns a structured `fields` array containing each input's `label`, `placeholder`, and `type`. Alternatively, the client can split `input_type`, `input_label`, and `input_placeholder` by comma (`,`).
+
 ### 4.2 Request Withdrawal (Redeem)
 Exchange accumulated coins for real currency payout.
 * **Route**: `POST /api/wallet/withdraw` (supports legacy `POST /api/wallet/withdraw.php`)
 * **Headers**: `Authorization: Bearer <JWT_TOKEN>`
-* **Request Body (JSON)**:
+* **Request Body (Single Input Field - JSON)**:
   ```json
   {
     "methodId": "upi_id",
     "amountCoins": 100,
     "details": "payee@upi"
+  }
+  ```
+
+* **Request Body (Multiple Input Fields - JSON)**:
+  For payout methods with multiple comma-separated input fields (e.g. Bank Transfer), submit the `details` parameter as a key-value JSON object:
+  ```json
+  {
+    "methodId": "bank_transfer",
+    "amountCoins": 5000,
+    "details": {
+      "Bank Name": "SBI",
+      "Account Number": "123456789",
+      "IFSC Code": "SBIN0001234"
+    }
   }
   ```
 * **Success Response (JSON)**:
