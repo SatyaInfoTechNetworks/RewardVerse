@@ -1019,7 +1019,7 @@ export const handlePlaytimeAds = async (req, res) => {
     const { user_id, offer_id = '', offer_name = 'Playtime Offer', amount = 0, signature, task_id = '', task_name = '' } = params;
 
     const APPLICATION_KEY = process.env.PLAYTIME_APP_KEY || "59c2f0110111f993";
-    const APPLICATION_SECRET_KEY = process.env.PLAYTIME_APP_SECRET || "3QDAWT60JYHQ2IWZ";
+    const APPLICATION_SECRET_KEY = process.env.PLAYTIME_APP_SECRET || "9GAVPWIXW5SB3QGD";
 
     if (!user_id || !amount || !signature) {
       console.warn('⚠️ [PLAYTIME_ADS] Missing required parameters:', { user_id, amount, signature });

@@ -139,6 +139,14 @@ import {
   getContestLeaderboard
 } from './controllers/contestController.js';
 
+import {
+  listOtherAppsUser,
+  adminListOtherApps,
+  adminCreateOtherApp,
+  adminUpdateOtherApp,
+  adminDeleteOtherApp
+} from './controllers/otherAppsController.js';
+
 // Middleware Imports
 import { authenticateUser, authenticateAdmin, verifyAppCheck } from './middlewares/auth.js';
 
@@ -246,6 +254,7 @@ app.get(['/api/banners/list', '/api/banners', '/api/banners/list.php'], listBann
 app.get(['/api/leaderboard/list', '/api/leaderboard/list.php'], getLeaderboard);
 app.get(['/api/leaderboard/top', '/api/leaderboard/top_earners.php'], getTopEarners);
 app.get(['/api/ticker/earnings', '/api/ticker/recent_earnings.php'], getRecentEarnings);
+app.get(['/api/other-apps', '/api/other-apps/list', '/api/other-apps/list.php'], listOtherAppsUser);
 
 // ==========================================
 // 7. SURPRISE BONUS ENVELOPE (LIFAFA) ROUTES
@@ -346,6 +355,12 @@ app.get('/api/admin/banners', authenticateAdmin, listAdminBanners);
 app.post('/api/admin/banners', authenticateAdmin, createBanner);
 app.put('/api/admin/banners/:id', authenticateAdmin, updateBanner);
 app.delete('/api/admin/banners/:id', authenticateAdmin, deleteBanner);
+
+// Other Apps
+app.get('/api/admin/other-apps', authenticateAdmin, adminListOtherApps);
+app.post('/api/admin/other-apps', authenticateAdmin, adminCreateOtherApp);
+app.put('/api/admin/other-apps/:id', authenticateAdmin, adminUpdateOtherApp);
+app.delete('/api/admin/other-apps/:id', authenticateAdmin, adminDeleteOtherApp);
 
 // App Configs
 app.get('/api/admin/configs', authenticateAdmin, listAppConfigs);

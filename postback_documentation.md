@@ -3,7 +3,8 @@
 > **Base URL:** `https://api-rewardverse.satyainfotechnetworks.com`
 >
 > All postback endpoints are **public** (no Authorization header required).  
-> Duplicate callbacks are automatically **idempotent** (safe to retry).
+> Duplicate callbacks are automatically **idempotent** (safe to retry).  
+> Last verified: **June 2026** — matches `webhookController.js` production code.
 
 ---
 
@@ -21,7 +22,7 @@
 10. [Pocketsfull (Completion + Chargeback)](#10-pocketsfull-postback)
 11. [Real Opinion](#11-real-opinion-postback)
 12. [Generic Offer Completed (Pending Validation)](#12-generic-offer-completed-pending-validation)
-13. [Timewall (Credit / Hold / Chargeback)](#13-timewall-postback)
+13. [Timewall (Credit / Hold / Hold Cancelled / Chargeback)](#13-timewall-postback)
 
 ---
 
@@ -32,25 +33,27 @@ Ad Network → HTTP GET/POST → Rewardverse Webhook Endpoint
                                     ↓
                           Verify Signature / Hash
                                     ↓
-                         Resolve User by user_id / uid / user_id hex
+                         Resolve User by uid / id / user_id (hex)
                                     ↓
-                    Check Idempotency (duplicate completion_id check)
+                    Check Idempotency (offer_completions.completion_id)
                                     ↓
                         Credit balance + Write transaction ledger
                                     ↓
-                Send FCM push notification + Admin Telegram alert
+                    Send FCM push notification + Admin Telegram alert
+                                    ↓
+                        Process referral commission (async)
 ```
 
-**User ID Resolution Order:**
+**User ID Resolution Order (resolveUser helper):**
 1. Firebase UID (`uid` column)
-2. Primary database ID (`id` column)
+2. Primary database UUID (`id` column)
 3. 10-char hex public user ID (`user_id` column)
 
 ---
 
 ## 1. Generic In-House Postback
 
-Used for your own in-house offer tracking. Called when a user completes a tier of an offer.
+Used for your own in-house offer tracking. Called when a user completes a tier of a custom offer.
 
 | Field | Value |
 |-------|-------|
@@ -63,7 +66,7 @@ Used for your own in-house offer tracking. Called when a user completes a tier o
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `click_id` | string | ✅ | Unique ID generated when user starts the offer (`user_offer_progress.click_id`) |
-| `tier_title` | string | ✅ | Exact tier title string to mark as completed |
+| `tier_title` | string | ✅ | Exact tier title string to mark as completed (case-insensitive match) |
 
 ### Example Request
 
@@ -73,6 +76,8 @@ GET /api/webhook/postback?click_id=abc123&tier_title=Level+1+Complete
 
 ```json
 POST /api/webhook/postback
+Content-Type: application/json
+
 {
   "click_id": "abc123",
   "tier_title": "Level 1 Complete"
@@ -95,12 +100,14 @@ POST /api/webhook/postback
 |------|---------|
 | 400 | `Missing click_id or tier_title` |
 | 404 | `Invalid Click ID` |
+| 404 | `User not found for this click` |
 | 404 | `Tier not found for this offer` |
 
 ### Behavior Notes
-- Idempotent: if the tier was already completed for this `click_id`, returns `200` with `"Tier already completed (idempotent)"`.
-- Automatically fires a push notification to the user.
-- Triggers referral commission processing.
+- Idempotent: if tier was already completed for this `click_id`, returns `200` with `"Tier already completed (idempotent)"`.
+- Marks `user_offer_progress.status` → `COMPLETED` if ALL tiers done, otherwise `STARTED`.
+- Logs transaction with description: `{offerTitle} : {displayTitle}`.
+- Fires push notification + referral commission processing.
 
 ---
 
@@ -126,18 +133,17 @@ signature = md5( SECRET_KEY + "." + user_id + "." + floor(value) + "." + token )
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user_id` | string | ✅ | Rewardverse user identifier (UID / hex ID) |
+| `user_id` | string | ✅ | Rewardverse user identifier (UID / hex ID / UUID) |
 | `value` | number | ✅ | Coin reward amount |
 | `token` | string | ✅ | Unique transaction token (idempotency key) |
 | `signature` | string | ✅ | MD5 signature hash |
-| `offer_name` | string | ❌ | Name of the completed offer |
+| `offer_name` | string | ❌ | Name of the completed offer (default: `"External Offer"`) |
 | `goal_name` | string | ❌ | Goal/milestone name |
 | `gaid` | string | ❌ | Google Advertising ID |
 | `ip` | string | ❌ | User's IP address |
 
 ### PubScale Dashboard Setup
 
-Configure your postback URL in PubScale dashboard as:
 ```
 https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pubscale?user_id={userid}&value={reward}&token={transactionid}&signature={signature}&offer_name={offer_name}&goal_name={goal_name}
 ```
@@ -145,19 +151,13 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pubscale?user_id={
 ### Success Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "User rewarded successfully"
-}
+{ "status": "success", "message": "User rewarded successfully" }
 ```
 
 ### Duplicate Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "Duplicate token ignored"
-}
+{ "status": "success", "message": "Duplicate token ignored" }
 ```
 
 ### Error Responses
@@ -167,6 +167,11 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pubscale?user_id={
 | 400 | error | `Missing required parameters` |
 | 403 | error | `Invalid Signature` |
 | 404 | error | `User not found` |
+
+### Behavior Notes
+- Idempotency key = `token`. Duplicate tokens are silently accepted with `200`.
+- Inserts into `offer_completions` with `provider = 'pubscale'`.
+- Transaction source = `PUBSCALE`.
 
 ---
 
@@ -188,8 +193,10 @@ Called by PubScale when a completed reward needs to be reversed (e.g. fraud, ret
 | `value` | number | ✅ | Coins to deduct |
 | `token` | string | ✅ | Original completion token |
 | `signature` | string | ✅ | MD5 signature hash |
-| `offer_name` | string | ❌ | Offer name |
-| `reason` | string | ❌ | Reason for reversal |
+| `offer_name` | string | ❌ | Offer name (default: `"External Offer"`) |
+| `reason` | string | ❌ | Reason for reversal (default: `"Reversed by provider"`) |
+| `gaid` | string | ❌ | Google Advertising ID |
+| `ip` | string | ❌ | User IP |
 
 ### PubScale Dashboard Setup
 
@@ -198,10 +205,12 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pubscale-chargebac
 ```
 
 ### Behavior Notes
-- Marks completion record status as `REVERSED`.
+- Checks if already `REVERSED` — if so, returns `200` idempotently.
+- Sets `offer_completions.status` → `REVERSED`.
 - Deducts coins from user balance.
 - Writes a `DEBIT` / `PUBSCALE_REVERSAL` transaction to the ledger.
-- Sends admin Telegram alert `🚨` and push notification to user.
+- Sends admin Telegram alert `🚨` + push notification to user.
+- Offer name resolved from original `offer_completions` record first, then from `offer_name` param.
 
 ---
 
@@ -222,7 +231,9 @@ Called by CPX Research for survey completions and reversals.
 hash = md5( trans_id + "-" + SECURE_HASH )
 ```
 
-> **Secure Hash:** `yyZpfQ6EDvthdxvFYbbhJHfED6FhH1N6`
+> **Secure Hash:** `c61DO2Aq2vD6kZZ9OlLZzNtiXPoDrh2R`
+
+> **Note:** The raw `SECURE_HASH` itself is also accepted as `hash` (test mode fallback).
 
 ### Request Parameters
 
@@ -257,8 +268,12 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/cpx-research?trans
 | `status` | Action |
 |----------|--------|
 | `1` | ✅ Credit user with `amount_local` coins |
-| `2` | 🚨 Reversal — deduct coins (status → `REVERSED`) |
-| `-2` | 🚨 Fraud reversal — deduct coins (status → `FRAUD`) |
+| `2` | 🚨 Reversal — deduct coins, status → `REVERSED` |
+| `-2` | 🚨 Fraud reversal — deduct coins, status → `FRAUD` |
+
+### Behavior Notes
+- Reversal uses original `amount` from the `transactions` table; falls back to `amount_local`.
+- Transaction source = `CPX_RESEARCH` / `CPX_RESEARCH_REVERSAL`.
 
 ---
 
@@ -276,10 +291,10 @@ Called by AdJump for offer and campaign completions.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user_id` | string | ✅ | Rewardverse user identifier |
+| `user_id` / `userid` | string | ✅ | Rewardverse user identifier |
 | `reward` / `reward_amount` | number | ✅ | Coin reward amount |
 | `transaction_id` | string | ❌ | Unique transaction ID (auto-generated if missing) |
-| `campaign` | string | ❌ | Campaign / offer name |
+| `campaign` | string | ❌ | Campaign / offer name (default: `"Adjump Offer"`) |
 | `offer_id` | number | ❌ | AdJump Offer ID |
 
 ### AdJump Dashboard Postback URL
@@ -291,14 +306,12 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/adjump?user_id={us
 ### Success Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "User rewarded successfully"
-}
+{ "status": "success", "message": "User rewarded successfully" }
 ```
 
-### Notes
-- If `transaction_id` is missing, one is auto-generated using MD5 of `user_id + reward + campaign + hour` — providing **hourly idempotency** per offer campaign.
+### Behavior Notes
+- If `transaction_id` is missing, auto-generated as `ADJ_{md5(user_id + reward + campaign + hourSlot)}` — providing **hourly idempotency** per offer campaign.
+- Transaction source = `ADJUMP`.
 - Triggers referral commission processing.
 
 ---
@@ -316,12 +329,12 @@ Called by Offermaru S2S with HMAC-SHA256 signature verification and replay attac
 ### Signature Algorithm
 
 ```
+// Fields sorted alphabetically: offer_id, publisher_payout, timestamp, transaction_id, user_id, user_reward
 payload = sorted_keys.map(k => `${k}=${v}`).join("&")
-// Fields: offer_id, publisher_payout, timestamp, transaction_id, user_id, user_reward
 signature = HMAC-SHA256( OFFERMARU_SECRET, payload )
 ```
 
-> **Secret:** Set in `OFFERMARU_S2S_SECRET` environment variable  
+> **Secret:** Set in `OFFERMARU_S2S_SECRET` env variable  
 > Default fallback: `b38c7127c0b72528637466fd703e2eac90a7b033b54339a7399709292f2c8043`
 
 ### Request Parameters
@@ -331,9 +344,9 @@ signature = HMAC-SHA256( OFFERMARU_SECRET, payload )
 | `user_id` | string | ✅ | Rewardverse user identifier |
 | `transaction_id` | string | ✅ | Unique transaction ID |
 | `user_reward` | number | ✅ | Coin reward for user |
-| `timestamp` | number | ✅ | Unix timestamp (ms) — request rejected if >5 min old |
+| `timestamp` | number | ✅ | Unix timestamp in **ms** — rejected if > 5 min old |
 | `offer_id` | string | ❌ | Offermaru Offer ID |
-| `offer_name` | string | ❌ | Offer display name |
+| `offer_name` | string | ❌ | Offer display name (default: `"Offermaru Offer"`) |
 | `publisher_payout` | number | ❌ | Publisher revenue amount |
 
 ### Header
@@ -352,9 +365,10 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/offermaru?user_id=
 
 Returns `OK` on success (plain text), or JSON error.
 
-### Notes
-- **Replay attack protection**: Requests older than **5 minutes** are rejected.
-- Idempotent via `transaction_id`.
+### Behavior Notes
+- **Replay protection**: requests older than **5 minutes** (based on `timestamp` ms) are rejected with `403`.
+- If `OFFERMARU_S2S_SECRET` is set but `X-Offermaru-Signature` header is missing → `403 Missing Signature`.
+- Transaction source = `OFFERMARU`.
 
 ---
 
@@ -372,8 +386,8 @@ Called by GrowDeck for playtime-based offer completions.
 
 ```
 rewardTrunc = Math.trunc(reward)
-payload = SECRET_KEY + "." + user_id + "." + rewardTrunc + "." + transaction_id
-signature = HMAC-SHA256( SECRET_KEY, payload )
+payload     = SECRET_KEY + "." + user_id + "." + rewardTrunc + "." + transaction_id
+signature   = HMAC-SHA256( SECRET_KEY, payload )
 ```
 
 > **Secret Key:** `30a11d6e8a666dd4bf5d6a4ab0a899`
@@ -386,7 +400,7 @@ signature = HMAC-SHA256( SECRET_KEY, payload )
 | `transaction_id` | string | ✅ | Unique transaction ID |
 | `signature` | string | ✅ | HMAC-SHA256 signature |
 | `reward` | number | ✅ | Coin reward amount |
-| `campaign` | string | ❌ | Campaign / game name |
+| `campaign` | string | ❌ | Campaign / game name (default: `"GrowDeck Playtime"`) |
 | `offer_id` | number | ❌ | Offer ID |
 | `click_ip` | string | ❌ | User IP |
 | `gaid` | string | ❌ | Google Advertising ID |
@@ -400,11 +414,12 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/growdeck?user_id={
 ### Success Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "User rewarded successfully"
-}
+{ "status": "success", "message": "User rewarded successfully" }
 ```
+
+### Behavior Notes
+- Uses `click_ip` first, then falls back to `req.ip`.
+- Transaction source = `GROWDECK`.
 
 ---
 
@@ -419,10 +434,19 @@ Called by Opinion Universe for survey completions and reversals.
 | **Auth** | HMAC-SHA256 in `SIG` query param (optional) |
 | **Response Format** | Plain text `1` (success) or `0` (error) |
 
-### Signature Algorithm
+### Signature Algorithms (all tried in order)
 
 ```
-signature = HMAC-SHA256( TOKEN, transaction_id )
+// Method 1: HMAC-SHA256 of TransactionID alone
+expectedHmac = HMAC-SHA256( TOKEN, TransactionID )
+
+// Method 2: SHA256 of sorted query params (RFC 3986) + TOKEN
+payload = sortedKeys.map(k => encodeURIComponent(k)=encodeURIComponent(v)).join("&")
+expectedSig = SHA256( payload + TOKEN )
+
+// Method 3: Same as Method 2 but %20 → + (RFC 1738)
+
+// Method 4: SHA256 of raw (unencoded) query string + TOKEN
 ```
 
 > **Token:** `edeb747df552564cf19058001f70a64d0f7c51347c1d6a5f2da3fb669995a2c5`
@@ -436,11 +460,11 @@ signature = HMAC-SHA256( TOKEN, transaction_id )
 | `PAYOUT` | number | ✅ | Coin reward amount |
 | `STATUS` | string | ✅ | `1` = success, `2` = reversal |
 | `OFFERID` | string | ❌ | Opinion Universe offer ID |
-| `offername` | string | ❌ | Offer name |
+| `offername` | string | ❌ | Offer name (default: `"Opinion Universe Offer"`) |
 | `eventname` | string | ❌ | Event/survey type |
 | `IP` | string | ❌ | User IP |
 | `gaid` | string | ❌ | Google Advertising ID |
-| `SIG` | string | ❌ | HMAC-SHA256 signature |
+| `SIG` | string | ❌ | Signature (any of 4 methods above) |
 
 ### Opinion Universe Dashboard Postback URL
 
@@ -460,11 +484,13 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/opinionuniverse?us
 | `STATUS` | Action |
 |----------|--------|
 | `1` | ✅ Credit user |
-| `2` | 🚨 Reversal — deduct coins |
+| `2` | 🚨 Reversal — deduct coins, status → `REVERSED` |
 
-### Notes
-- Test callbacks containing `{` placeholder characters are automatically detected and skipped with `1` response.
-- Missing `TransactionID` triggers auto-generation of a synthetic ID.
+### Behavior Notes
+- If `TransactionID` contains `{` placeholder → synthetic ID auto-generated as `OU_{user_id}_{offer_id}_{PAYOUT}_{timestamp}`.
+- Test callbacks with `{` in `userid` or `PAYOUT` are detected AFTER signature check → returns `1` and fires a test Telegram alert.
+- If `SIG` is not provided, verification is skipped (open mode).
+- Transaction source = `OPINION_UNIVERSE` / `OPINION_UNIVERSE_REVERSAL`.
 
 ---
 
@@ -486,7 +512,7 @@ signature = SHA1( rawString )
 ```
 
 > **Application Key:** `59c2f0110111f993` (or `PLAYTIME_APP_KEY` env var)  
-> **Application Secret:** `3QDAWT60JYHQ2IWZ` (or `PLAYTIME_APP_SECRET` env var)
+> **Application Secret:** `9GAVPWIXW5SB3QGD` (or `PLAYTIME_APP_SECRET` env var)
 
 ### Request Parameters
 
@@ -496,7 +522,7 @@ signature = SHA1( rawString )
 | `amount` | number | ✅ | Coin reward amount |
 | `signature` | string | ✅ | SHA1 signature |
 | `offer_id` | string | ❌ | Playtime offer ID |
-| `offer_name` | string | ❌ | Game/offer name |
+| `offer_name` | string | ❌ | Game/offer name (default: `"Playtime Offer"`) |
 | `task_id` | string | ❌ | Specific task/milestone ID |
 | `task_name` | string | ❌ | Task description |
 
@@ -509,15 +535,14 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/playtimeads?user_i
 ### Success Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "User rewarded successfully"
-}
+{ "status": "success", "message": "User rewarded successfully" }
 ```
 
-### Notes
-- Transaction ID is auto-generated as `PLAYTIME_{md5(user_id+offer_id+task_id+amount+task_name)}` — ensures per-milestone idempotency.
-- Both GET and POST are supported.
+### Behavior Notes
+- Transaction ID auto-generated as `PLAYTIME_{md5(user_id + offer_id + task_id + amount + task_name)}` — ensures per-milestone idempotency.
+- Display name = `{offer_name} - {task_name}` if `task_name` is present.
+- Params merged from both `req.query` and `req.body`.
+- Transaction source = `PLAYTIME`.
 
 ---
 
@@ -549,7 +574,7 @@ hash = md5( trans_id + "-" + SECURE_HASH )
 | `hash` | string | ✅ | MD5 hash |
 | `amount_local` | number | ❌ | Coin amount |
 | `offer_id` | string | ❌ | Offer ID |
-| `type` | string | ❌ | Offer type label |
+| `type` | string | ❌ | Offer type label (default: `"Offer"`) |
 
 ### Pocketsfull Dashboard Postback URL
 
@@ -562,16 +587,19 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pocketsfull?trans_
 | `status` | Action |
 |----------|--------|
 | `approved` / `completed` / `1` | ✅ Credit user |
-| `rejected` / `chargeback` / `2` | 🚨 Deduct coins (reversal) |
+| `rejected` / `chargeback` / `2` | 🚨 Deduct coins (reversal → `REVERSED`) |
+| any other value | ✅ `200` ignored silently |
 
 ### Success Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "User rewarded successfully"
-}
+{ "status": "success", "message": "User rewarded successfully" }
 ```
+
+### Behavior Notes
+- Chargeback deduction amount is taken from `offer_completions.payout_coins` first, then falls back to `amount_local`.
+- Offer name for chargeback resolves from original `offer_completions.offer_name`.
+- Transaction source = `POCKETSFULL` / `POCKETSFULL_REVERSAL`.
 
 ---
 
@@ -592,10 +620,10 @@ Handles JSON POST callbacks from Real Opinion surveys.
 |-------|------|----------|-------------|
 | `user_id` | string | ✅ | Rewardverse user identifier |
 | `trans_id` | string | ✅ | Unique transaction ID |
-| `status` | number | ✅ | `1` = success (any other value is ignored) |
+| `status` | number | ✅ | `1` = success (any other value → `200` but ignored) |
 | `user_payout` | number | ❌ | Base coin reward |
 | `bonus_amount` | number | ❌ | Bonus coins (added to `user_payout`) |
-| `publisher_payout` | number | ❌ | Publisher revenue |
+| `publisher_payout` | number | ❌ | Publisher revenue (stored, not credited) |
 | `app_id` | string | ❌ | Real Opinion App ID |
 
 ### Example Request
@@ -617,15 +645,13 @@ Content-Type: application/json
 ### Success Response (200)
 
 ```json
-{
-  "success": true,
-  "message": "Callback received and processed successfully."
-}
+{ "success": true, "message": "Callback received and processed successfully." }
 ```
 
-### Notes
+### Behavior Notes
 - **Total reward** = `user_payout + bonus_amount`.
-- Only `status = 1` triggers a credit. All other statuses return `200` but are ignored.
+- Only `status = 1` triggers a credit. All other statuses return `200` but are silently ignored.
+- Transaction source = `REAL_OPINION`.
 
 ---
 
@@ -649,7 +675,7 @@ Used for S2S integrations that require admin validation before crediting. Does *
 | `payout` | number | ✅ | Expected coin payout |
 | `user_id` | string | ❌* | User identifier (*one of `user_id` or `user_install_id` required) |
 | `user_install_id` | string | ❌* | Install ID fallback |
-| `provider` | string | ❌ | Ad network name |
+| `provider` | string | ❌ | Ad network name (default: `"unknown"`) |
 
 ### Example Request
 
@@ -669,23 +695,20 @@ Content-Type: application/json
 ### Success Response (200)
 
 ```json
-{
-  "success": true,
-  "message": "Offer recorded"
-}
+{ "success": true, "message": "Offer recorded" }
 ```
 
-### Notes
-- Record is saved with status `PENDING_VALIDATION`.
-- Admin must manually approve/reject from the admin dashboard under **Proofs**.
-- Sends admin Telegram alert `⏳` and a user notification.
-- Does **NOT** credit balance until admin approves.
+### Behavior Notes
+- Record saved with status `PENDING_VALIDATION` — balance is **NOT** credited yet.
+- Admin must approve/reject from the admin dashboard → **Proofs** section.
+- Sends admin Telegram alert `⏳` + user push notification.
+- Does **NOT** trigger referral commission (happens on admin approval in `walletController`).
 
 ---
 
 ## 13. Timewall Postback
 
-Multi-action postback for Timewall offerwall. Handles credits, holds, cancellations, and chargebacks.
+Multi-action postback for Timewall offerwall. Handles credits, holds, hold cancellations, and chargebacks.
 
 | Field | Value |
 |-------|-------|
@@ -697,7 +720,7 @@ Multi-action postback for Timewall offerwall. Handles credits, holds, cancellati
 
 ```
 payload = user_id + revenue + TIMEWALL_SECRET
-hash = SHA256( payload )
+hash    = SHA256( payload )
 ```
 
 > **Secret:** `e1bd718416cbd32f670bd4587a4f3313`
@@ -708,11 +731,11 @@ hash = SHA256( payload )
 |-----------|------|----------|-------------|
 | `user_id` | string | ✅ | Rewardverse user identifier |
 | `transaction_id` | string | ✅ | Unique transaction ID |
-| `type` | string | ✅ | See type table below |
+| `type` | string | ✅ | See type table below (default: `"credit"`) |
 | `reward` | number | ❌ | Coin reward amount |
-| `revenue` | number | ❌ | Publisher revenue (used in hash) |
+| `revenue` | number | ❌ | Publisher revenue (used in hash calculation) |
 | `hash` | string | ❌ | SHA256 signature |
-| `offer_name` | string | ❌ | Offer name |
+| `offer_name` | string | ❌ | Offer name (default: `"Timewall Withdrawal"`) |
 | `reason` | string | ❌ | Reason for reversal/chargeback |
 | `ip` | string | ❌ | User IP |
 | `withdraw_id` | string | ❌ | Withdrawal reference |
@@ -728,20 +751,23 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/timewall?user_id={
 | `type` | Action |
 |--------|--------|
 | `credit` (default) | ✅ Credit user with `reward` coins |
-| `hold` | ⏳ Record as `PENDING_VALIDATION` — wait for approval |
-| `hold_cancelled` | ❌ Cancel a held transaction |
-| `chargeback` | 🚨 Deduct coins (reversal) |
+| `hold` | ⏳ Record as `PENDING_VALIDATION` — wait for admin approval |
+| `hold_cancelled` | ❌ Cancel a held transaction → status `CANCELLED` |
+| `chargeback` | 🚨 Deduct coins (reversal → `REVERSED`) |
 
 > **Note:** Negative `reward` or `revenue` values also trigger the chargeback flow regardless of `type`.
 
 ### Success Response (200)
 
 ```json
-{
-  "status": "success",
-  "message": "User rewarded successfully"
-}
+{ "status": "success", "message": "User rewarded successfully" }
 ```
+
+### Behavior Notes
+- Hash verification is done case-insensitively (both compared `.toLowerCase()`).
+- IP resolved from `x-forwarded-for` → `x-real-ip` → `req.ip` → `ip` param.
+- `hold_cancelled` sets status to `CANCELLED` (not `REVERSED`).
+- Transaction source = `TIMEWALL` / `TIMEWALL_REVERSAL`.
 
 ---
 
@@ -752,7 +778,7 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/timewall?user_id={
 | Condition | HTTP | Response |
 |-----------|------|----------|
 | ✅ Success | `200` | `{"status":"success","message":"..."}` or `OK` or `1` |
-| 🔁 Duplicate (idempotent) | `200` | `"Already processed"` |
+| 🔁 Duplicate (idempotent) | `200` | `"Already processed"` / `"Duplicate token ignored"` |
 | ❌ Missing params | `400` | `{"status":"error","message":"Missing required parameters"}` |
 | 🔒 Invalid signature | `403` | `{"status":"error","message":"Invalid Signature"}` |
 | 👤 User not found | `404` | `{"status":"error","message":"User not found"}` |
@@ -764,11 +790,11 @@ https://api-rewardverse.satyainfotechnetworks.com/api/webhook/timewall?user_id={
 
 | Feature | Description |
 |---------|-------------|
-| **Timing-safe comparison** | All signature checks use `crypto.timingSafeEqual()` to prevent timing attacks |
+| **Timing-safe comparison** | All signature checks use `crypto.timingSafeEqual()` via `safeCompare()` helper |
 | **Idempotency** | All postbacks check `offer_completions.completion_id` before crediting |
 | **Replay protection** | Offermaru rejects requests older than 5 minutes via `timestamp` param |
-| **DB transactions** | All balance + ledger writes are wrapped in atomic MySQL transactions |
-| **Referral processing** | All successful completions automatically trigger referral commission calculation |
+| **Atomic DB transactions** | All balance + ledger writes are wrapped in MySQL `BEGIN / COMMIT` blocks |
+| **Referral processing** | All successful completions automatically trigger `processReferralRewards()` async |
 
 ---
 
@@ -778,7 +804,7 @@ Every successful (or reversed) postback fires:
 1. **Telegram Alert** to the admin channel with:
    - 👤 User name + hex ID
    - 🔥 Offer name
-   - 📡 Network name + logo
+   - 📡 Network name + brand logo image preview
    - 💰 Coins credited/deducted
    - 🆔 Transaction ID
 2. **FCM Push Notification** to the user's device
@@ -798,8 +824,22 @@ curl -X POST "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/post
 # Test PubScale (build signature first)
 curl "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pubscale?user_id=USER_UID&value=100&token=UNIQUE_TOKEN&signature=YOUR_MD5_SIG&offer_name=Test+Offer"
 
+# Test CPX Research
+curl "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/cpx-research?trans_id=TX123&user_id=USER_UID&status=1&amount_local=50&hash=YOUR_MD5_HASH"
+
+# Test Pocketsfull
+curl "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/pocketsfull?trans_id=TX123&user_id=USER_UID&status=completed&amount_local=75&hash=YOUR_MD5_HASH"
+
+# Test Playtime Ads
+curl "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/playtimeads?user_id=USER_UID&offer_id=123&amount=60&signature=YOUR_SHA1&task_name=Level+5"
+
 # Test Timewall
 curl "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/timewall?user_id=USER_UID&transaction_id=TXID001&type=credit&reward=50&offer_name=TestOffer"
+
+# Test Real Opinion
+curl -X POST "https://api-rewardverse.satyainfotechnetworks.com/api/webhook/realopinion" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"USER_UID","trans_id":"RO_TX001","status":1,"user_payout":50,"bonus_amount":10}'
 ```
 
 ---
@@ -815,8 +855,28 @@ PLAYTIME_APP_SECRET=3QDAWT60JYHQ2IWZ
 OFFERMARU_S2S_SECRET=b38c7127c0b72528637466fd703e2eac90a7b033b54339a7399709292f2c8043
 ```
 
-> All other secrets (PubScale, CPX, GrowDeck, Pocketsfull, Timewall, Opinion Universe, Real Opinion) are **hardcoded constants** in `webhookController.js`.
+> All other secrets (PubScale, CPX Research, GrowDeck, Pocketsfull, Timewall, Opinion Universe, Real Opinion) are **hardcoded constants** in `webhookController.js`.
 
 ---
 
-*Documentation generated for Rewardverse Backend v2.5 — SatyaInfoTechNetworks*
+## Route Registration Summary (`server.js`)
+
+| Route | Methods | Handler |
+|-------|---------|---------|
+| `/api/webhook/postback` | GET, POST | `handlePostback` |
+| `/api/webhook/pubscale` | GET | `handlePubscale` |
+| `/api/webhook/pubscale-chargeback` | GET | `handlePubscaleChargeback` |
+| `/api/webhook/cpx-research` | GET | `handleCpxResearch` |
+| `/api/webhook/adjump` | GET | `handleAdjump` |
+| `/api/webhook/offermaru` | GET | `handleOffermaru` |
+| `/api/webhook/growdeck` | GET | `handleGrowdeck` |
+| `/api/webhook/opinionuniverse` | GET | `handleOpinionUniverse` |
+| `/api/webhook/playtimeads` | GET, POST | `handlePlaytimeAds` |
+| `/api/webhook/pocketsfull` | GET, POST | `handlePocketsfull` |
+| `/api/webhook/realopinion` | POST | `handleRealOpinion` |
+| `/api/webhook/offer-completed` | POST | `handleOfferCompleted` |
+| `/api/webhook/timewall` | GET, POST | `handleTimewall` |
+
+---
+
+*Documentation updated June 2026 — Verified against `webhookController.js` production code — Rewardverse Backend v2.5 — SatyaInfoTechNetworks*

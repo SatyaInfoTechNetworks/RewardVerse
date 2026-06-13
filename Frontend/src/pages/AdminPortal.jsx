@@ -11,6 +11,7 @@ import AdminReferrals from '../components/admin/AdminReferrals';
 import AdminLifafas from '../components/admin/AdminLifafas';
 import AdminReports from '../components/admin/AdminReports';
 import AdminContests from '../components/admin/AdminContests';
+import AdminOtherApps from '../components/admin/AdminOtherApps';
 
 export default function AdminPortal() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -18,7 +19,7 @@ export default function AdminPortal() {
   const [loginError, setLoginError] = useState('');
   
   // Navigation (Aligned exactly with legacy PHP pages)
-  const [activeTab, setActiveTab] = useState('overview'); // overview, users, offers, referrals, erasures, banners, push, lifafas, withdrawals, payouts, reports, proofs, tickets, configs
+  const [activeTab, setActiveTab] = useState('overview'); // overview, users, offers, referrals, erasures, banners, push, lifafas, withdrawals, payouts, reports, proofs, tickets, configs, other_apps
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
 
   // Admin Data states
@@ -1185,6 +1186,12 @@ export default function AdminPortal() {
                   <p>Lifafa (Redeem)</p>
                 </a>
               </li>
+              <li className="nav-item">
+                <a href="#" onClick={() => { resetOfferForm(); setSelectedUser(null); setActiveTab('other_apps'); }} className={`nav-link ${activeTab === 'other_apps' ? 'active' : ''}`}>
+                  <i className="nav-icon fas fa-mobile-alt mr-2"></i>
+                  <p>Other Apps</p>
+                </a>
+              </li>
 
               <li className="nav-header font-weight-bold text-xs text-muted uppercase">Inventory</li>
               <li className="nav-item">
@@ -2207,6 +2214,15 @@ export default function AdminPortal() {
               <div className="card card-white shadow-none border rounded-lg">
                 <div className="card-body">
                   <AdminLifafas getHeaders={getHeaders} showNotice={showNotice} API_BASE={API_BASE} />
+                </div>
+              </div>
+            )}
+
+            {/* TAB 11.5: OTHER APPS PROMOTION */}
+            {activeTab === 'other_apps' && (
+              <div className="card card-white shadow-none border rounded-lg">
+                <div className="card-body">
+                  <AdminOtherApps getHeaders={getHeaders} showNotice={showNotice} API_BASE={API_BASE} />
                 </div>
               </div>
             )}
