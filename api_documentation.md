@@ -314,9 +314,6 @@ Retrieve available payment methods (UPI, Paytm, Gift Cards, Bank Transfer) and c
         "min_coins": 100,
         "conversion_rate": 0.1000,
         "currency_symbol": "₹",
-        "input_label": "Enter UPI Address",
-        "input_placeholder": "example@ybl",
-        "input_type": "text",
         "fields": [
           { "label": "Enter UPI Address", "placeholder": "example@ybl", "type": "text" }
         ]
@@ -329,9 +326,6 @@ Retrieve available payment methods (UPI, Paytm, Gift Cards, Bank Transfer) and c
         "min_coins": 5000,
         "conversion_rate": 0.1000,
         "currency_symbol": "₹",
-        "input_label": "Bank Name,Account Number,IFSC Code",
-        "input_placeholder": "e.g. SBI,e.g. 123456789,e.g. SBIN0001234",
-        "input_type": "text,number,text",
         "fields": [
           { "label": "Bank Name", "placeholder": "e.g. SBI", "type": "text" },
           { "label": "Account Number", "placeholder": "e.g. 123456789", "type": "number" },
@@ -343,7 +337,7 @@ Retrieve available payment methods (UPI, Paytm, Gift Cards, Bank Transfer) and c
   ```
 
 > [!NOTE]
-> **Multiple Form Inputs:** For payout methods requiring multiple inputs (like Bank Transfer), the backend parses the comma-separated parameters and returns a structured `fields` array containing each input's `label`, `placeholder`, and `type`. Alternatively, the client can split `input_type`, `input_label`, and `input_placeholder` by comma (`,`).
+> **Form Fields Structure:** The backend returns a structured `fields` array containing the `label`, `placeholder`, and `type` for each required user input. The client application iterates over this array to dynamically build the withdrawal form.
 
 ### 4.2 Request Withdrawal (Redeem)
 Exchange accumulated coins for real currency payout.

@@ -453,9 +453,6 @@ Header: Authorization: Bearer <admin_jwt_token>
       "conversionRate": 0.10,
       "currencySymbol": "₹",
       "processingTime": "24 Hours",
-      "inputType": "text",
-      "inputLabel": "Enter UPI ID",
-      "inputPlaceholder": "user@ybl",
       "fields": [
         { "label": "Enter UPI ID", "placeholder": "user@ybl", "type": "text" }
       ],
@@ -474,9 +471,6 @@ Header: Authorization: Bearer <admin_jwt_token>
       "conversionRate": 0.10,
       "currencySymbol": "₹",
       "processingTime": "48 Hours",
-      "inputType": "text,number,text",
-      "inputLabel": "Bank Name,Account Number,IFSC Code",
-      "inputPlaceholder": "e.g. HDFC Bank,e.g. 123456789,e.g. HDFC0001234",
       "fields": [
         { "label": "Bank Name", "placeholder": "e.g. HDFC Bank", "type": "text" },
         { "label": "Account Number", "placeholder": "e.g. 123456789", "type": "number" },
@@ -492,7 +486,7 @@ Header: Authorization: Bearer <admin_jwt_token>
 ```
 
 > [!NOTE]
-> **Multiple Form Inputs:** For payout methods requiring multiple inputs (like Bank Transfer), the backend parses the comma-separated parameters and returns a structured `fields` array containing each input's `label`, `placeholder`, and `type`. Alternatively, the client can split `inputType`, `inputLabel`, and `inputPlaceholder` by comma (`,`).
+> **Form Fields Structure:** The backend returns a structured `fields` array containing the `label`, `placeholder`, and `type` for each required user input. The client application iterates over this array to dynamically build the withdrawal form.
 
 ---
 

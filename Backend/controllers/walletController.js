@@ -417,9 +417,6 @@ export const getPayoutMethods = async (req, res) => {
         conversionRate: parseFloat(m.conversion_rate || 0),
         currencySymbol: m.currency_symbol || '₹',
         processingTime: m.processing_time || '24 Hours',
-        inputType: m.input_type || 'text',
-        inputLabel: m.input_label || 'Details',
-        inputPlaceholder: m.input_placeholder || 'Enter details',
         fields: fields,
         isActive: Boolean(m.is_active),
         tiers: tiersByMethod[m.id] || []
