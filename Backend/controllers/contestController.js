@@ -626,6 +626,7 @@ export const getContestDetailUser = async (req, res) => {
     let entriesLeftToday = c.max_entries_per_day;
     let freeEntriesLeftToday = c.allow_free_entry ? 1 : 0;
     let adEntriesLeftToday = c.allow_ad_entry ? c.max_ad_entries_per_day : 0;
+    let todayAds = 0;
     let overallEntriesLeft = c.max_tickets_per_user;
     let myScore = 0;
     let adEntryCooldownRemaining = 0;
@@ -644,7 +645,7 @@ export const getContestDetailUser = async (req, res) => {
           [contestId, userId]
         );
         const todayEntries = parseInt(todayRows[0]?.tickets || 0);
-        entriesLeftToday = Math.max(0, c.max_entries_per_day - todayEntries);
+        entriesLeftToday = c.max_entries_per_day > 0 ? Math.max(0, c.max_entries_per_day - todayEntries) : 99999;
 
         // Free entry limit check today
         const [freeRows] = await pool.query(
@@ -659,8 +660,14 @@ export const getContestDetailUser = async (req, res) => {
           "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' AND DATE(created_at) = CURDATE()",
           [contestId, userId]
         );
-        const todayAds = parseInt(adRows[0]?.tickets || 0);
+        todayAds = parseInt(adRows[0]?.tickets || 0);
         adEntriesLeftToday = c.allow_ad_entry ? Math.max(0, c.max_ad_entries_per_day - todayAds) : 0;
+
+        // Cap remaining daily free and ad entries by overall daily entries limit
+        if (c.max_entries_per_day > 0) {
+          freeEntriesLeftToday = Math.min(freeEntriesLeftToday, entriesLeftToday);
+          adEntriesLeftToday = Math.min(adEntriesLeftToday, entriesLeftToday);
+        }
 
         // Check if there is an active cooldown from the last ad entry
         if (c.allow_ad_entry && c.ad_entry_cooldown > 0) {
@@ -746,6 +753,7 @@ export const getContestDetailUser = async (req, res) => {
         entriesLeftToday,
         freeEntriesLeftToday,
         adEntriesLeftToday,
+        adEntriesCompletedToday: todayAds,
         overallEntriesLeft,
         myScore, // dynamic live scoring
         rewards: rewards.map(r => ({
