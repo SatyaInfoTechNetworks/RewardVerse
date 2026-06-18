@@ -198,12 +198,13 @@ export const getContestEntries = async (req, res) => {
 
     if (contest.type === 'LUCKY_DRAW') {
       const query = `
-        SELECT ce.id, ce.entries_count, ce.entry_source, ce.created_at,
+        SELECT MIN(ce.id) as id, SUM(ce.entries_count) as entries_count, ce.entry_source, MAX(ce.created_at) as created_at,
                u.name as user_name, u.email as user_email, u.user_id as user_public_id, u.id as user_internal_id
         FROM contest_entries ce
         JOIN users u ON ce.user_id = u.id
         WHERE ce.contest_id = ?
-        ORDER BY ce.entries_count DESC, ce.created_at DESC
+        GROUP BY ce.user_id, ce.entry_source, u.name, u.email, u.user_id, u.id
+        ORDER BY entries_count DESC, created_at DESC
       `;
       const [entries] = await pool.query(query, [contestId]);
       res.json({ success: true, entries });
@@ -638,26 +639,25 @@ export const getContestDetailUser = async (req, res) => {
         myTickets = parseInt(entryRows[0]?.tickets || 0);
 
         // Daily limit remaining checker (overall limit backward compatibility)
-        const today = new Date().toISOString().split('T')[0];
         const [todayRows] = await pool.query(
-          'SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND DATE(created_at) = ?',
-          [contestId, userId, today]
+          'SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND DATE(created_at) = CURDATE()',
+          [contestId, userId]
         );
         const todayEntries = parseInt(todayRows[0]?.tickets || 0);
         entriesLeftToday = Math.max(0, c.max_entries_per_day - todayEntries);
 
         // Free entry limit check today
         const [freeRows] = await pool.query(
-          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'FREE' AND DATE(created_at) = ?",
-          [contestId, userId, today]
+          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'FREE' AND DATE(created_at) = CURDATE()",
+          [contestId, userId]
         );
         const todayFree = parseInt(freeRows[0]?.tickets || 0);
         freeEntriesLeftToday = c.allow_free_entry ? Math.max(0, 1 - todayFree) : 0;
 
         // Ad entry limit check today
         const [adRows] = await pool.query(
-          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' AND DATE(created_at) = ?",
-          [contestId, userId, today]
+          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' AND DATE(created_at) = CURDATE()",
+          [contestId, userId]
         );
         const todayAds = parseInt(adRows[0]?.tickets || 0);
         adEntriesLeftToday = c.allow_ad_entry ? Math.max(0, c.max_ad_entries_per_day - todayAds) : 0;
@@ -665,7 +665,7 @@ export const getContestDetailUser = async (req, res) => {
         // Check if there is an active cooldown from the last ad entry
         if (c.allow_ad_entry && c.ad_entry_cooldown > 0) {
           const [lastAdEntryRows] = await pool.query(
-            "SELECT updated_at FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' LIMIT 1",
+            "SELECT updated_at FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' ORDER BY updated_at DESC LIMIT 1",
             [contestId, userId]
           );
           if (lastAdEntryRows.length > 0) {
@@ -803,13 +803,11 @@ export const enterContestUser = async (req, res) => {
         });
       }
 
-      const today = new Date().toISOString().split('T')[0];
-
       // Enforce daily combined limit (max_entries_per_day)
       if (contest.max_entries_per_day > 0) {
         const [todayRows] = await connection.query(
-          'SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND DATE(created_at) = ?',
-          [contestId, userId, today]
+          'SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND DATE(created_at) = CURDATE()',
+          [contestId, userId]
         );
         const todayEntries = parseInt(todayRows[0]?.tickets || 0);
         if (todayEntries >= contest.max_entries_per_day) {
@@ -828,8 +826,8 @@ export const enterContestUser = async (req, res) => {
         }
 
         const [todayFreeRows] = await connection.query(
-          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'FREE' AND DATE(created_at) = ?",
-          [contestId, userId, today]
+          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'FREE' AND DATE(created_at) = CURDATE()",
+          [contestId, userId]
         );
         const todayFreeCount = parseInt(todayFreeRows[0]?.tickets || 0);
         if (todayFreeCount >= 1) {
@@ -846,7 +844,7 @@ export const enterContestUser = async (req, res) => {
         // Check ad entry cooldown
         if (contest.ad_entry_cooldown > 0) {
           const [lastAdEntryRows] = await connection.query(
-            "SELECT updated_at FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' LIMIT 1",
+            "SELECT updated_at FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' ORDER BY updated_at DESC LIMIT 1",
             [contestId, userId]
           );
           if (lastAdEntryRows.length > 0) {
@@ -864,8 +862,8 @@ export const enterContestUser = async (req, res) => {
         }
 
         const [todayAdRows] = await connection.query(
-          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' AND DATE(created_at) = ?",
-          [contestId, userId, today]
+          "SELECT SUM(entries_count) as tickets FROM contest_entries WHERE contest_id = ? AND user_id = ? AND entry_source = 'AD' AND DATE(created_at) = CURDATE()",
+          [contestId, userId]
         );
         const todayAdCount = parseInt(todayAdRows[0]?.tickets || 0);
         if (todayAdCount >= contest.max_ad_entries_per_day) {
@@ -911,11 +909,10 @@ export const enterContestUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid ticket entry source method.' });
       }
 
-      // Insert or increment entry count
+      // Insert new entry row to track this specific ticket
       await connection.query(
         `INSERT INTO contest_entries (id, user_id, contest_id, entry_source, entries_count, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 1, NOW(), NOW())
-         ON DUPLICATE KEY UPDATE entries_count = entries_count + 1, updated_at = NOW()`,
+         VALUES (?, ?, ?, ?, 1, NOW(), NOW())`,
         [uuidv4(), userId, contestId, source]
       );
 

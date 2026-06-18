@@ -659,7 +659,6 @@ export async function initializeDatabase() {
         entries_count INT DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_user_contest_source (user_id, contest_id, entry_source),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (contest_id) REFERENCES contests(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -755,6 +754,11 @@ export async function initializeDatabase() {
       await connection.query('CREATE INDEX idx_offer_type_status ON user_offer_progress (admin_status, last_updated DESC)').catch(() => { });
       await connection.query('CREATE INDEX idx_user_trans_date ON transactions (user_id, created_at DESC)').catch(() => { });
       await connection.query('CREATE INDEX idx_offer_active_hot ON offers (is_active, is_hot)').catch(() => { });
+      
+      // Drop unique index from contest_entries to allow multiple daily tracking rows
+      await connection.query('CREATE INDEX idx_contest_entries_user_id ON contest_entries (user_id)').catch(() => { });
+      await connection.query('ALTER TABLE contest_entries DROP INDEX unique_user_contest_source').catch(() => { });
+      console.log('✅ Checked and dropped unique_user_contest_source from contest_entries if existed.');
     } catch (idxErr) {
       console.log('⚠️ Index creation info:', idxErr.message);
     }
