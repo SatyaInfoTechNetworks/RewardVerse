@@ -136,7 +136,7 @@ export async function broadcastNotification(title, body, imageUrl = null) {
   try {
     // 1. Fetch all active FCM tokens
     const [tokenRows] = await pool.query(
-      'SELECT fcm_token FROM users WHERE fcm_token IS NOT NULL AND fcm_token != ""'
+      'SELECT DISTINCT fcm_token FROM users WHERE fcm_token IS NOT NULL AND fcm_token != ""'
     );
     const tokens = tokenRows.map(row => row.fcm_token).filter(Boolean);
     const sentCount = tokens.length;
