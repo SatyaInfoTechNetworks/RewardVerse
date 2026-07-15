@@ -1515,7 +1515,7 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
 export const handleTimewall = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const TIMEWALL_SECRET = "e1bd718416cbd32f670bd4587a4f3313";
+    const TIMEWALL_SECRET = "d59bfb7fb7918ce0b692b4bc27420cff";
     const params = { ...req.query, ...req.body };
     const {
       user_id: user_id_param,

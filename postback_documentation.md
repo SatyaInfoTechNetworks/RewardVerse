@@ -723,7 +723,7 @@ payload = user_id + revenue + TIMEWALL_SECRET
 hash    = SHA256( payload )
 ```
 
-> **Secret:** `e1bd718416cbd32f670bd4587a4f3313`
+> **Secret:** `d59bfb7fb7918ce0b692b4bc27420cff`
 
 ### Request Parameters
 
@@ -743,7 +743,7 @@ hash    = SHA256( payload )
 ### Timewall Dashboard Postback URL
 
 ```
-https://api-rewardverse.satyainfotechnetworks.com/api/webhook/timewall?user_id={user_id}&transaction_id={transaction_id}&revenue={revenue}&reward={reward}&type={type}&offer_name={offer_name}&hash={hash}
+https://stuearn-api.satyainfotechnetworks.com/api/webhook/timewall?user_id={userID}&transaction_id={transactionID}&revenue={revenue}&reward={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdraw_id={withdrawid}&reason={reason}&offer_name={offername}
 ```
 
 ### Type Values
