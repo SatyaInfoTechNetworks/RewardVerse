@@ -743,7 +743,7 @@ hash    = SHA256( payload )
 ### Timewall Dashboard Postback URL
 
 ```
-https://stuearn-api.satyainfotechnetworks.com/api/webhook/timewall?user_id={userID}&transaction_id={transactionID}&revenue={revenue}&reward={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdraw_id={withdrawid}&reason={reason}&offer_name={offername}
+https://api-rewardverse.satyainfotechnetworks.com/api/webhook/timewall?user_id={userID}&transaction_id={transactionID}&revenue={revenue}&reward={currencyAmount}&hash={hash}&ip={ip}&type={type}&withdraw_id={withdrawid}&reason={reason}&offer_name={offername}
 ```
 
 ### Type Values
