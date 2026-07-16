@@ -96,6 +96,7 @@ export const loginGoogle = async (req, res) => {
       // Return both modern JWT and legacy token
       return res.json({
         success: true,
+        status: 'SUCCESS', // Required by Kotlin AuthResponse
         message: 'Login successful',
         token: generateLegacyToken(updatedUser.id),
         jwt: generateJwtToken({ id: updatedUser.id, role: 'user' }),
@@ -103,11 +104,11 @@ export const loginGoogle = async (req, res) => {
       });
     } else {
       // User not found -> client will trigger signup
-      return res.json({ success: false, message: 'User not found' });
+      return res.json({ success: false, status: 'ERROR', message: 'User not found' });
     }
   } catch (error) {
     console.error('Google Login Error:', error);
-    res.status(500).json({ success: false, message: 'Server Error: ' + error.message });
+    res.status(500).json({ success: false, status: 'ERROR', message: 'Server Error: ' + error.message });
   }
 };
 
