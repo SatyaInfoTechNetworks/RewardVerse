@@ -1,23 +1,6 @@
 import pool from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
 
-// Formats the user object to return a hashed integer id for Kotlin client compatibility
-function formatUserResponse(user) {
-  if (!user) return null;
-  let idVal = user.id;
-  if (typeof idVal === 'string') {
-    let hash = 0;
-    for (let i = 0; i < idVal.length; i++) {
-      hash = idVal.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    idVal = Math.abs(hash) % 10000000;
-  }
-  return {
-    ...user,
-    id: idVal
-  };
-}
-
 // Helper: Seed-based deterministic random generator
 function getSeededRandom(seedStr) {
   let hash = 0;
@@ -83,7 +66,7 @@ export const getUserProfile = async (req, res) => {
       totalReferrals: parseInt(referralsRow[0].count || 0)
     };
 
-    res.json({ success: true, user: formatUserResponse(user) });
+    res.json({ success: true, user });
   } catch (error) {
     console.error('Get Profile Error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -802,26 +785,10 @@ export const getAppConfig = async (req, res) => {
       maintenance_message: maintenanceMessage
     };
 
-    // Aligned to legacy AppConfigData structure expected by Android GSON parser
-    const legacyPayload = {
-      app_enabled: true,
-      app_disable_message: '',
-      maintenance_enabled: isMaintenance === 'true',
-      maintenance_message: maintenanceMessage,
-      latest_version_code: parseInt(latestVersionCode),
-      min_supported_version_code: forceUpdate === 'true' ? parseInt(latestVersionCode) : 1,
-      force_update: forceUpdate === 'true',
-      is_user_banned: false,
-      playstore_url: updateUrl,
-      update_title: 'Update Available',
-      update_message: updateMessage
-    };
-
     res.json({
       success: true,
-      status: 'success', // Matches GSON GenericResponse wrapper status check
-      configs: configPayload,
-      data: legacyPayload
+      configs: configPayload, // Mapped to Android GSON AppUpdateResponse model
+      data: configPayload    // Mapped to Web client structure
     });
   } catch (error) {
     console.error('Get App Config Error:', error);
