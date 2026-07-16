@@ -281,7 +281,7 @@ app.post(['/api/tickets/:id/close', '/api/tickets/close.php'], authenticateUser,
 // ==========================================
 // 11. APP CONFIGURATION
 // ==========================================
-app.get(['/api/config/app_config.php', '/api/config/app_config', '/api/config/app-config'], getAppConfig);
+app.get(['/api/config/app_config.php', '/api/config/app_config', '/api/config/app-config', '/api/app-config'], getAppConfig);
 
 // ==========================================
 // 10. AD WEBHOOKS (POSTBACKS)

@@ -16,6 +16,23 @@ function generateJwtToken(payload) {
   });
 }
 
+// Formats the user object to return a hashed integer id for Kotlin client compatibility
+function formatUserResponse(user) {
+  if (!user) return null;
+  let idVal = user.id;
+  if (typeof idVal === 'string') {
+    let hash = 0;
+    for (let i = 0; i < idVal.length; i++) {
+      hash = idVal.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    idVal = Math.abs(hash) % 10000000;
+  }
+  return {
+    ...user,
+    id: idVal
+  };
+}
+
 // Google Login
 export const loginGoogle = async (req, res) => {
   try {
@@ -82,7 +99,7 @@ export const loginGoogle = async (req, res) => {
         message: 'Login successful',
         token: generateLegacyToken(updatedUser.id),
         jwt: generateJwtToken({ id: updatedUser.id, role: 'user' }),
-        user: updatedUser
+        user: formatUserResponse(updatedUser)
       });
     } else {
       // User not found -> client will trigger signup
@@ -185,7 +202,7 @@ export const signupUser = async (req, res) => {
         message: 'User updated successfully',
         token: generateLegacyToken(user.id),
         jwt: generateJwtToken({ id: user.id, role: 'user' }),
-        user: updatedUser[0]
+        user: formatUserResponse(updatedUser[0])
       });
     }
 
@@ -293,7 +310,7 @@ export const signupUser = async (req, res) => {
             message: 'User updated successfully (resolved concurrency)',
             token: generateLegacyToken(user.id),
             jwt: generateJwtToken({ id: user.id, role: 'user' }),
-            user: updatedUser[0]
+            user: formatUserResponse(updatedUser[0])
           });
         }
       }
@@ -326,7 +343,7 @@ export const signupUser = async (req, res) => {
       message: 'User created successfully',
       token: generateLegacyToken(newUserId),
       jwt: generateJwtToken({ id: newUserId, role: 'user' }),
-      user: newUser
+      user: formatUserResponse(newUser)
     });
   } catch (error) {
     console.error('Signup Error:', error);
@@ -431,7 +448,7 @@ export const checkUid = async (req, res) => {
         message: 'Login successful',
         token: generateLegacyToken(user.id),
         jwt: generateJwtToken({ id: user.id, role: 'user' }),
-        user: user
+        user: formatUserResponse(user)
       });
     } else {
       return res.json({
