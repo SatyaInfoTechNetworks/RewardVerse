@@ -395,6 +395,44 @@ List user's ledger entries.
   }
   ```
 
+### 4.4 Get Redeem History (Withdrawals)
+Retrieve the history of all redemption/withdrawal requests submitted by the authenticated user.
+* **Route**: `GET /api/wallet/redeems` (supports legacy `GET /api/wallet/redeems.php`)
+* **Headers**: `Authorization: Bearer <JWT_TOKEN>`
+* **Query Parameters**:
+  - `page` (optional, integer, default: `1`): The page index to fetch for pagination.
+  - `limit` (optional, integer, default: `20`): The number of records to return per page.
+* **Success Response (JSON)**:
+  ```json
+  {
+    "success": true,
+    "withdrawals": [
+      {
+        "id": "a671cf23-50be-4531-bcbd-5f12897ac510",
+        "amount": 1000.00,
+        "amountCoins": 1000,
+        "amountCurrency": 10.00,
+        "method": "Paytm Cash",
+        "methodId": "paytm_method_uuid",
+        "methodLogo": "https://i.ibb.co/example/paytm_logo.png",
+        "details": {
+          "Paytm Number": "9876543210"
+        },
+        "status": "APPROVED",
+        "statusText": "Approved",
+        "date": "2026-07-16T15:00:00.000Z",
+        "redeemCode": "GIFT-CARD-XYZ-123"
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 5,
+      "totalCount": 85,
+      "limit": 20
+    }
+  }
+  ```
+
 ---
 
 ## 📢 5. Feed, Banners & Leaderboards

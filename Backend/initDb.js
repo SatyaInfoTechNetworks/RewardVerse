@@ -707,6 +707,107 @@ export async function initializeDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // 33. Leaderboard Module Tables
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboards (
+        id CHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL DEFAULT 'EARNINGS',
+        period VARCHAR(50) NOT NULL DEFAULT 'DAILY',
+        minimum_score DECIMAL(10, 2) DEFAULT 0.00,
+        minimum_referrals INT DEFAULT 0,
+        reward_pool DECIMAL(10, 2) DEFAULT 0.00,
+        dynamic_pool_enabled BOOLEAN DEFAULT TRUE,
+        pool_growth_per_user DECIMAL(10, 2) DEFAULT 10.00,
+        max_pool_cap DECIMAL(10, 2) DEFAULT 100000.00,
+        max_winners INT DEFAULT 20,
+        start_date DATETIME NULL,
+        end_date DATETIME NULL,
+        auto_reward BOOLEAN DEFAULT FALSE,
+        show_on_home BOOLEAN DEFAULT TRUE,
+        status VARCHAR(50) DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard_entries (
+        id CHAR(36) PRIMARY KEY,
+        leaderboard_id CHAR(36) NOT NULL,
+        user_id CHAR(36) NOT NULL,
+        score DECIMAL(10, 2) DEFAULT 0.00,
+        referrals_count INT DEFAULT 0,
+        rank INT DEFAULT 0,
+        qualified BOOLEAN DEFAULT TRUE,
+        is_disqualified BOOLEAN DEFAULT FALSE,
+        disqualify_reason TEXT NULL,
+        is_hidden BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_leaderboard_user (leaderboard_id, user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard_reward_tiers (
+        id CHAR(36) PRIMARY KEY,
+        leaderboard_id CHAR(36) NOT NULL,
+        start_rank INT NOT NULL,
+        end_rank INT NOT NULL,
+        reward_coins DECIMAL(10, 2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (leaderboard_id) REFERENCES leaderboards(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard_rewards (
+        id CHAR(36) PRIMARY KEY,
+        leaderboard_id CHAR(36) NOT NULL,
+        user_id CHAR(36) NOT NULL,
+        rank INT NOT NULL,
+        reward_coins DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'DISTRIBUTED',
+        rewarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard_seasons (
+        id CHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL DEFAULT 'MONTHLY',
+        start_date DATETIME NOT NULL,
+        end_date DATETIME NOT NULL,
+        prize_pool DECIMAL(10, 2) DEFAULT 0.00,
+        status VARCHAR(50) DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard_logs (
+        id CHAR(36) PRIMARY KEY,
+        admin_id CHAR(36) NULL,
+        action VARCHAR(100) NOT NULL,
+        target_user VARCHAR(255) NULL,
+        details TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard_announcements (
+        id CHAR(36) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        ends_at DATETIME NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // Extra Columns Migrations
     await addColumnIfNotExists(connection, 'offers', 'daily_completion_cap', 'INT DEFAULT 0');
     await addColumnIfNotExists(connection, 'offers', 'country_targeting', 'VARCHAR(255) DEFAULT \'IN\'');

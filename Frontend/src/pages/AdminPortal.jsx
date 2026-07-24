@@ -12,6 +12,7 @@ import AdminLifafas from '../components/admin/AdminLifafas';
 import AdminReports from '../components/admin/AdminReports';
 import AdminContests from '../components/admin/AdminContests';
 import AdminOtherApps from '../components/admin/AdminOtherApps';
+import AdminLeaderboard from '../components/admin/AdminLeaderboard';
 
 export default function AdminPortal() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -1190,6 +1191,12 @@ export default function AdminPortal() {
                 <a href="#" onClick={() => { resetOfferForm(); setSelectedUser(null); setActiveTab('other_apps'); }} className={`nav-link ${activeTab === 'other_apps' ? 'active' : ''}`}>
                   <i className="nav-icon fas fa-mobile-alt mr-2"></i>
                   <p>Other Apps</p>
+                </a>
+              </li>
+              <li className="nav-item">
+                <a href="#" onClick={() => { resetOfferForm(); setSelectedUser(null); setActiveTab('leaderboards'); }} className={`nav-link ${activeTab === 'leaderboards' ? 'active' : ''}`}>
+                  <i className="nav-icon fas fa-crown mr-2 text-warning"></i>
+                  <p>Leaderboard Module</p>
                 </a>
               </li>
 
@@ -2377,6 +2384,15 @@ export default function AdminPortal() {
                   <AdminContests getHeaders={getHeaders} showNotice={showNotice} API_BASE={API_BASE} />
                 </div>
               </div>
+            )}
+
+            {/* TAB 17: LEADERBOARDS MODULE */}
+            {activeTab === 'leaderboards' && (
+              <AdminLeaderboard
+                apiBase={API_BASE}
+                getHeaders={getHeaders}
+                showNotice={showNotice}
+              />
             )}
 
           </div>

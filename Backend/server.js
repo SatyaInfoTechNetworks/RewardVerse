@@ -51,6 +51,23 @@ import {
   getTopEarners
 } from './controllers/feedController.js';
 import {
+  getHomeLeaderboardBanner,
+  getEarningsLeaderboard,
+  getReferralLeaderboard,
+  getUserLeaderboardProfile,
+  getLeaderboardHistory,
+  getAdminLeaderboardDashboard,
+  listAdminLeaderboards,
+  saveLeaderboardConfigAdmin,
+  getLeaderboardParticipantsAdmin,
+  adjustPlayerScoreAdmin,
+  getAntiCheatPanelAdmin,
+  getCoinStatisticsAdmin,
+  distributeRewardsAdmin,
+  manageAnnouncementAdmin,
+  getAdminLogs
+} from './controllers/leaderboardController.js';
+import {
   getLifafaDetail,
   claimLifafaReward
 } from './controllers/lifafaController.js';
@@ -256,6 +273,13 @@ app.get(['/api/leaderboard/top', '/api/leaderboard/top_earners.php'], getTopEarn
 app.get(['/api/ticker/earnings', '/api/ticker/recent_earnings.php'], getRecentEarnings);
 app.get(['/api/other-apps', '/api/other-apps/list', '/api/other-apps/list.php'], listOtherAppsUser);
 
+// Leaderboard Module Endpoints
+app.get(['/api/leaderboards/banner', '/api/leaderboards'], getHomeLeaderboardBanner);
+app.get('/api/leaderboards/earnings', getEarningsLeaderboard);
+app.get('/api/leaderboards/referrals', getReferralLeaderboard);
+app.get('/api/leaderboards/me', authenticateUser, getUserLeaderboardProfile);
+app.get('/api/leaderboards/history', getLeaderboardHistory);
+
 // ==========================================
 // 7. SURPRISE BONUS ENVELOPE (LIFAFA) ROUTES
 // ==========================================
@@ -395,6 +419,18 @@ app.get('/api/admin/visit-earn', authenticateAdmin, adminListVisitTasks);
 app.post('/api/admin/visit-earn', authenticateAdmin, adminCreateVisitTask);
 app.put('/api/admin/visit-earn/:id', authenticateAdmin, adminUpdateVisitTask);
 app.delete('/api/admin/visit-earn/:id', authenticateAdmin, adminDeleteVisitTask);
+
+// Leaderboard Management
+app.get('/api/admin/leaderboard/dashboard', authenticateAdmin, getAdminLeaderboardDashboard);
+app.get('/api/admin/leaderboard/list', authenticateAdmin, listAdminLeaderboards);
+app.post('/api/admin/leaderboard/save', authenticateAdmin, saveLeaderboardConfigAdmin);
+app.get('/api/admin/leaderboard/participants', authenticateAdmin, getLeaderboardParticipantsAdmin);
+app.post('/api/admin/leaderboard/adjust-score', authenticateAdmin, adjustPlayerScoreAdmin);
+app.get('/api/admin/leaderboard/anti-cheat', authenticateAdmin, getAntiCheatPanelAdmin);
+app.get('/api/admin/leaderboard/coin-stats', authenticateAdmin, getCoinStatisticsAdmin);
+app.post('/api/admin/leaderboard/distribute', authenticateAdmin, distributeRewardsAdmin);
+app.post('/api/admin/leaderboard/announcement', authenticateAdmin, manageAnnouncementAdmin);
+app.get('/api/admin/leaderboard/logs', authenticateAdmin, getAdminLogs);
 
 // ==========================================
 // 12. CONTESTS & GIVEAWAYS ROUTES
