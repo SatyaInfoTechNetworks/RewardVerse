@@ -119,11 +119,48 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     }
   };
 
+  const selectLeaderboardForEdit = (lb) => {
+    setEditingLb(lb);
+    setLbForm({
+      id: lb.id,
+      name: lb.name || '',
+      type: lb.type || 'EARNINGS',
+      period: lb.period || 'DAILY',
+      minimum_score: parseFloat(lb.minimum_score) || 0,
+      minimum_referrals: parseInt(lb.minimum_referrals) || 0,
+      reward_pool: parseFloat(lb.reward_pool) || 0,
+      dynamic_pool_enabled: lb.dynamic_pool_enabled ? true : false,
+      pool_growth_per_user: parseFloat(lb.pool_growth_per_user) || 10,
+      max_pool_cap: parseFloat(lb.max_pool_cap) || 100000,
+      max_winners: parseInt(lb.max_winners) || 20,
+      start_date: lb.start_date || '',
+      end_date: lb.end_date || '',
+      auto_reward: lb.auto_reward ? true : false,
+      show_on_home: lb.show_on_home ? true : false,
+      status: lb.status || 'ACTIVE',
+      tiers: Array.isArray(lb.tiers) && lb.tiers.length > 0 ? lb.tiers : [
+        { start_rank: 1, end_rank: 1, reward_coins: 5000 },
+        { start_rank: 2, end_rank: 2, reward_coins: 3000 },
+        { start_rank: 3, end_rank: 3, reward_coins: 2000 },
+        { start_rank: 4, end_rank: 10, reward_coins: 750 },
+        { start_rank: 11, end_rank: 25, reward_coins: 300 }
+      ]
+    });
+  };
+
   const fetchLeaderboards = async () => {
     try {
       const res = await fetch(`${apiBase}/api/admin/leaderboard/list`, { headers: getHeaders() });
       const data = await res.json();
-      if (data.success) setLeaderboardsList(data.leaderboards || []);
+      if (data.success && data.leaderboards && data.leaderboards.length > 0) {
+        setLeaderboardsList(data.leaderboards);
+        if (!editingLb) {
+          selectLeaderboardForEdit(data.leaderboards[0]);
+        } else {
+          const current = data.leaderboards.find(l => l.id === editingLb.id);
+          if (current) selectLeaderboardForEdit(current);
+        }
+      }
     } catch (err) {
       console.error('Error fetching leaderboards:', err);
     }
@@ -467,19 +504,21 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                           <td>
                             <button
                               onClick={() => {
-                                setEditingLb(lb);
-                                setLbForm({
-                                  ...lb,
-                                  dynamic_pool_enabled: lb.dynamic_pool_enabled ? true : false,
-                                  auto_reward: lb.auto_reward ? true : false,
-                                  show_on_home: lb.show_on_home ? true : false,
-                                  tiers: lb.tiers || []
-                                });
+                                selectLeaderboardForEdit(lb);
                                 setSubTab('settings');
                               }}
-                              className="btn btn-xs btn-outline-primary"
+                              className="btn btn-xs btn-outline-primary mr-1"
                             >
-                              <i className="fas fa-edit"></i> Edit
+                              <i className="fas fa-cog"></i> Settings
+                            </button>
+                            <button
+                              onClick={() => {
+                                selectLeaderboardForEdit(lb);
+                                setSubTab('tier_builder');
+                              }}
+                              className="btn btn-xs btn-primary font-weight-bold"
+                            >
+                              <i className="fas fa-layer-group"></i> Edit Tiers
                             </button>
                           </td>
                         </tr>
@@ -502,10 +541,79 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       {/* SUBTAB 2: LEADERBOARD SETTINGS */}
       {subTab === 'settings' && (
         <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white font-weight-bold">
-            <i className="fas fa-sliders-h text-primary mr-2"></i>Configure Leaderboard Parameters
+          <div className="card-header bg-white d-flex justify-content-between align-items-center">
+            <div className="font-weight-bold">
+              <i className="fas fa-sliders-h text-primary mr-2"></i>Configure Leaderboard Parameters
+            </div>
+            <button
+              onClick={() => {
+                setEditingLb(null);
+                setLbForm({
+                  id: '',
+                  name: 'New Custom Leaderboard',
+                  type: 'EARNINGS',
+                  period: 'DAILY',
+                  minimum_score: 100,
+                  minimum_referrals: 0,
+                  reward_pool: 5000,
+                  dynamic_pool_enabled: true,
+                  pool_growth_per_user: 10,
+                  max_pool_cap: 50000,
+                  max_winners: 20,
+                  start_date: '',
+                  end_date: '',
+                  auto_reward: false,
+                  show_on_home: true,
+                  status: 'ACTIVE',
+                  tiers: [
+                    { start_rank: 1, end_rank: 1, reward_coins: 2000 },
+                    { start_rank: 2, end_rank: 2, reward_coins: 1000 },
+                    { start_rank: 3, end_rank: 5, reward_coins: 500 }
+                  ]
+                });
+              }}
+              className="btn btn-sm btn-outline-success font-weight-bold"
+            >
+              <i className="fas fa-plus mr-1"></i> Create New Leaderboard
+            </button>
           </div>
           <div className="card-body">
+            {/* Target Leaderboard Selection Bar */}
+            <div className="bg-light border rounded-lg p-3 mb-4 d-flex flex-wrap align-items-center justify-content-between">
+              <div className="d-flex align-items-center mb-2 mb-md-0">
+                <label className="text-xs uppercase font-weight-bold mr-3 mb-0 text-dark">
+                  <i className="fas fa-list-ul text-primary mr-1"></i> Select Leaderboard to Edit:
+                </label>
+                <select
+                  className="form-control form-control-sm font-weight-bold text-dark border-primary"
+                  style={{ width: '280px', height: '38px', borderRadius: '6px' }}
+                  value={lbForm.id || ''}
+                  onChange={(e) => {
+                    const found = leaderboardsList.find(l => l.id === e.target.value);
+                    if (found) selectLeaderboardForEdit(found);
+                  }}
+                >
+                  {leaderboardsList.map((lb) => (
+                    <option key={lb.id} value={lb.id}>
+                      {lb.name} ({lb.type} - {lb.period})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="d-flex align-items-center">
+                <span className="badge badge-primary px-3 py-2 font-weight-bold mr-2 text-sm">
+                  <i className="fas fa-crown mr-1"></i> {lbForm.name || 'Editing Leaderboard'}
+                </span>
+                <span className={`badge ${lbForm.type === 'EARNINGS' ? 'badge-success' : 'badge-info'} px-3 py-2 font-weight-bold mr-2 text-sm`}>
+                  {lbForm.type}
+                </span>
+                <span className="badge badge-dark px-3 py-2 font-weight-bold text-sm">
+                  {lbForm.period}
+                </span>
+              </div>
+            </div>
+
             <form onSubmit={handleSaveLeaderboard}>
               <div className="row">
                 <div className="col-md-6 form-group">
@@ -669,13 +777,49 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
           <div className="card-header bg-white d-flex justify-content-between align-items-center">
             <div>
               <h5 className="font-weight-bold mb-0"><i className="fas fa-layer-group text-primary mr-2"></i>Reward Tier Builder</h5>
-              <span className="text-muted text-xs">Define custom rank range rewards (Unlimited Tiers)</span>
+              <span className="text-muted text-xs">Configure separate custom rank rewards for each leaderboard contest</span>
             </div>
             <button onClick={addTierRow} className="btn btn-sm btn-success font-weight-bold">
               <i className="fas fa-plus mr-1"></i> Add Rank Tier
             </button>
           </div>
           <div className="card-body">
+            {/* Target Leaderboard Selection Bar */}
+            <div className="bg-gradient-light border rounded-lg p-3 mb-4 d-flex flex-wrap align-items-center justify-content-between">
+              <div className="d-flex align-items-center mb-2 mb-md-0">
+                <label className="text-xs uppercase font-weight-bold mr-3 mb-0 text-dark">
+                  <i className="fas fa-trophy text-warning mr-1"></i> Select Leaderboard Contest:
+                </label>
+                <select
+                  className="form-control form-control-sm font-weight-bold text-dark border-primary"
+                  style={{ width: '300px', height: '38px', borderRadius: '6px' }}
+                  value={lbForm.id || ''}
+                  onChange={(e) => {
+                    const found = leaderboardsList.find(l => l.id === e.target.value);
+                    if (found) selectLeaderboardForEdit(found);
+                  }}
+                >
+                  {leaderboardsList.map((lb) => (
+                    <option key={lb.id} value={lb.id}>
+                      {lb.name} ({lb.type} - {lb.period})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="d-flex align-items-center">
+                <span className="text-xs text-muted font-weight-bold mr-2">Configuring Tiers For:</span>
+                <span className="badge badge-primary px-3 py-2 font-weight-bold mr-2 text-sm">
+                  <i className="fas fa-crown mr-1"></i> {lbForm.name || 'Selected Contest'}
+                </span>
+                <span className={`badge ${lbForm.type === 'EARNINGS' ? 'badge-success' : 'badge-info'} px-3 py-2 font-weight-bold mr-2 text-sm`}>
+                  {lbForm.type}
+                </span>
+                <span className="badge badge-dark px-3 py-2 font-weight-bold text-sm">
+                  {lbForm.period}
+                </span>
+              </div>
+            </div>
             <div className="table-responsive">
               <table className="table table-bordered table-striped align-middle">
                 <thead className="thead-dark text-xs uppercase">
