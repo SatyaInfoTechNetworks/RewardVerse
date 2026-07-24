@@ -3,15 +3,15 @@ import React, { useState, useEffect } from 'react';
 export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
   const [subTab, setSubTab] = useState('overview'); // overview, settings, tier_builder, participants, anti_cheat, coin_stats, distribution, announcement, logs
 
-  // Overview stats state
+  // Overview stats state (Purged all fake numbers - 100% realtime from DB)
   const [dashStats, setDashStats] = useState({
-    active_leaderboards: 6,
-    participants: 4821,
-    prize_pool_coins: 62000,
-    rewards_pending: 14,
-    rewards_distributed: 2541,
-    total_reward_coins_given: 120000,
-    current_season: 'April 2026'
+    active_leaderboards: 0,
+    participants: 0,
+    prize_pool_coins: 0,
+    rewards_pending: 0,
+    rewards_distributed: 0,
+    total_reward_coins_given: 0,
+    current_season: new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
   });
 
   // Leaderboards Config state
@@ -21,9 +21,9 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     name: 'Daily Earnings',
     type: 'EARNINGS', // EARNINGS or REFERRAL
     period: 'DAILY', // DAILY, WEEKLY, MONTHLY, ALL_TIME
-    minimum_score: 500,
+    minimum_score: 0,
     minimum_referrals: 0,
-    reward_pool: 5000,
+    reward_pool: 0,
     dynamic_pool_enabled: true,
     pool_growth_per_user: 10,
     max_pool_cap: 100000,
@@ -33,22 +33,16 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     auto_reward: false,
     show_on_home: true,
     status: 'ACTIVE',
-    tiers: [
-      { start_rank: 1, end_rank: 1, reward_coins: 5000 },
-      { start_rank: 2, end_rank: 2, reward_coins: 3000 },
-      { start_rank: 3, end_rank: 3, reward_coins: 2000 },
-      { start_rank: 4, end_rank: 10, reward_coins: 750 },
-      { start_rank: 11, end_rank: 25, reward_coins: 300 }
-    ]
+    tiers: []
   });
 
-  // Participant stats & player table state
+  // Participant stats & player table state (Purged all fake numbers)
   const [participantStats, setParticipantStats] = useState({
-    qualified_users: 320,
-    not_qualified: 2814,
-    average_coins: 6200,
-    highest_coins: 45800,
-    lowest_qualified: 520
+    qualified_users: 0,
+    not_qualified: 0,
+    average_coins: 0,
+    highest_coins: 0,
+    lowest_qualified: 0
   });
   const [playersList, setPlayersList] = useState([]);
   const [playersSearch, setPlayersSearch] = useState('');
@@ -60,26 +54,26 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
 
-  // Anti-cheat state
+  // Anti-cheat state (Purged all fake numbers)
   const [antiCheatData, setAntiCheatData] = useState({
     anti_cheat_summary: {
-      duplicate_device_flags: 12,
-      emulator_flags: 5,
-      rapid_offer_spam_flags: 18,
-      vpn_proxy_flags: 8,
-      click_farm_detection_flags: 4
+      duplicate_device_flags: 0,
+      emulator_flags: 0,
+      rapid_offer_spam_flags: 0,
+      vpn_proxy_flags: 0,
+      click_farm_detection_flags: 0
     }
   });
 
-  // Coin Statistics state
+  // Coin Statistics state (Purged all fake numbers)
   const [coinStats, setCoinStats] = useState({
-    coins_earned_today: 145210,
-    coins_distributed: 138400,
-    leaderboard_rewards: 12000,
-    offer_rewards: 110000,
-    referral_rewards: 8000,
-    watch_ad_rewards: 8400,
-    current_coin_supply: 5830220
+    coins_earned_today: 0,
+    coins_distributed: 0,
+    leaderboard_rewards: 0,
+    offer_rewards: 0,
+    referral_rewards: 0,
+    watch_ad_rewards: 0,
+    current_coin_supply: 0
   });
 
   // Announcement & FCM Push state
@@ -672,7 +666,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
               </div>
 
               <div className="row">
-                <div className="col-md-4 form-group">
+                <div className="col-md-3 form-group">
                   <label className="text-xs uppercase font-weight-bold">Minimum Coins Required</label>
                   <input
                     type="number"
@@ -682,7 +676,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                   />
                 </div>
                 {lbForm.type === 'REFERRAL' && (
-                  <div className="col-md-4 form-group">
+                  <div className="col-md-3 form-group">
                     <label className="text-xs uppercase font-weight-bold">Minimum Successful Referrals</label>
                     <input
                       type="number"
@@ -692,7 +686,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                     />
                   </div>
                 )}
-                <div className="col-md-4 form-group">
+                <div className="col-md-3 form-group">
                   <label className="text-xs uppercase font-weight-bold">Base Reward Pool (Coins)</label>
                   <input
                     type="number"
@@ -701,7 +695,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                     onChange={(e) => setLbForm({ ...lbForm, reward_pool: parseFloat(e.target.value) })}
                   />
                 </div>
-                <div className="col-md-4 form-group">
+                <div className="col-md-3 form-group">
                   <label className="text-xs uppercase font-weight-bold">Maximum Winners</label>
                   <input
                     type="number"
@@ -709,6 +703,36 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                     value={lbForm.max_winners}
                     onChange={(e) => setLbForm({ ...lbForm, max_winners: parseInt(e.target.value) })}
                   />
+                </div>
+              </div>
+
+              {/* Contest Duration: Start Date & Time & End Date & Time */}
+              <div className="card bg-white border p-3 my-3 rounded-lg shadow-sm">
+                <h6 className="font-weight-bold text-primary mb-2">
+                  <i className="fas fa-clock mr-1"></i> Contest Schedule & Coin Crediting Rules
+                </h6>
+                <p className="text-xs text-muted mb-3">
+                  Specify when this leaderboard contest starts and ends. At the end of the contest duration, coin rewards are distributed to winners either automatically (if auto-reward is toggled ON) or manually via the Reward Distribution tab.
+                </p>
+                <div className="row">
+                  <div className="col-md-6 form-group">
+                    <label className="text-xs uppercase font-weight-bold">Contest Start Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control font-weight-bold text-dark"
+                      value={lbForm.start_date ? lbForm.start_date.substring(0, 16) : ''}
+                      onChange={(e) => setLbForm({ ...lbForm, start_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-md-6 form-group">
+                    <label className="text-xs uppercase font-weight-bold">Contest End Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control font-weight-bold text-danger"
+                      value={lbForm.end_date ? lbForm.end_date.substring(0, 16) : ''}
+                      onChange={(e) => setLbForm({ ...lbForm, end_date: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
 
