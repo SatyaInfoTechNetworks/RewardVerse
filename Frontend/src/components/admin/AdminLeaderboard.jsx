@@ -82,12 +82,19 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     current_coin_supply: 5830220
   });
 
-  // Announcement state
+  // Announcement & FCM Push state
   const [announcementForm, setAnnouncementForm] = useState({
     title: '🏆 April Leaderboard is LIVE!',
     message: 'Top 50 users win FREE Coins. Ends in 18 Days.',
     ends_at: '',
     is_active: true
+  });
+
+  const [fcmForm, setFcmForm] = useState({
+    target_type: 'broadcast', // broadcast or specific
+    target_user_id: '',
+    title: '🏆 Leaderboard Winner Alert!',
+    message: 'Congratulations! You placed in the Top Winners and received Coins!'
   });
 
   // Audit Logs state
@@ -301,6 +308,25 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       }
     } catch (err) {
       showNotice('error', 'Failed to update announcement banner.');
+    }
+  };
+
+  const handleSendFcmPush = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${apiBase}/api/admin/leaderboard/notify`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(fcmForm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', data.message || 'FCM Push Notification sent successfully!');
+      } else {
+        showNotice('error', data.message);
+      }
+    } catch (err) {
+      showNotice('error', 'Failed to send FCM Push Notification.');
     }
   };
 
@@ -1071,36 +1097,105 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
         </div>
       )}
 
-      {/* SUBTAB 8: ANNOUNCEMENT PANEL */}
+      {/* SUBTAB 8: ANNOUNCEMENT PANEL & FCM PUSH NOTIFICATIONS */}
       {subTab === 'announcement' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white font-weight-bold">
-            <i className="fas fa-bullhorn text-primary mr-2"></i>Leaderboard Home Announcement Banner
+        <div className="row">
+          <div className="col-md-6">
+            <div className="card shadow-sm border-0 rounded-lg">
+              <div className="card-header bg-white font-weight-bold">
+                <i className="fas fa-bullhorn text-primary mr-2"></i>Leaderboard Home Announcement Banner
+              </div>
+              <div className="card-body">
+                <form onSubmit={handleSaveAnnouncement}>
+                  <div className="form-group">
+                    <label className="text-xs uppercase font-weight-bold">Banner Title</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={announcementForm.title}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="text-xs uppercase font-weight-bold">Announcement Message</label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={announcementForm.message}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, message: e.target.value })}
+                      required
+                    ></textarea>
+                  </div>
+                  <button type="submit" className="btn btn-primary font-weight-bold">
+                    <i className="fas fa-broadcast-tower mr-1"></i> Update Live Banner
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
-          <div className="card-body">
-            <form onSubmit={handleSaveAnnouncement}>
-              <div className="form-group">
-                <label className="text-xs uppercase font-weight-bold">Banner Title</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={announcementForm.title}
-                  onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
-                />
+
+          <div className="col-md-6">
+            <div className="card shadow-sm border-0 rounded-lg">
+              <div className="card-header bg-white font-weight-bold">
+                <i className="fas fa-paper-plane text-success mr-2"></i>Dispatch Winner FCM Push Notifications
               </div>
-              <div className="form-group">
-                <label className="text-xs uppercase font-weight-bold">Announcement Message</label>
-                <textarea
-                  className="form-control"
-                  rows="3"
-                  value={announcementForm.message}
-                  onChange={(e) => setAnnouncementForm({ ...announcementForm, message: e.target.value })}
-                ></textarea>
+              <div className="card-body">
+                <form onSubmit={handleSendFcmPush}>
+                  <div className="form-group">
+                    <label className="text-xs uppercase font-weight-bold">Notification Target</label>
+                    <select
+                      className="form-control"
+                      value={fcmForm.target_type}
+                      onChange={(e) => setFcmForm({ ...fcmForm, target_type: e.target.value })}
+                    >
+                      <option value="broadcast">📢 Global Broadcast (All App Users)</option>
+                      <option value="specific">🎯 Specific Winner User ID</option>
+                    </select>
+                  </div>
+
+                  {fcmForm.target_type === 'specific' && (
+                    <div className="form-group">
+                      <label className="text-xs uppercase font-weight-bold">Target Winner User ID</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Paste user UUID or public UID"
+                        value={fcmForm.target_user_id}
+                        onChange={(e) => setFcmForm({ ...fcmForm, target_user_id: e.target.value })}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label className="text-xs uppercase font-weight-bold">Push Notification Title</label>
+                    <input
+                      type="text"
+                      className="form-control font-weight-bold"
+                      value={fcmForm.title}
+                      onChange={(e) => setFcmForm({ ...fcmForm, title: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="text-xs uppercase font-weight-bold">Push Message Body</label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={fcmForm.message}
+                      onChange={(e) => setFcmForm({ ...fcmForm, message: e.target.value })}
+                      required
+                    ></textarea>
+                  </div>
+
+                  <button type="submit" className="btn btn-success font-weight-bold">
+                    <i className="fas fa-paper-plane mr-1"></i> Send FCM Push Notification
+                  </button>
+                </form>
               </div>
-              <button type="submit" className="btn btn-primary font-weight-bold">
-                <i className="fas fa-broadcast-tower mr-1"></i> Update Live Announcement
-              </button>
-            </form>
+            </div>
           </div>
         </div>
       )}

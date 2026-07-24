@@ -64,6 +64,7 @@ import {
   getAntiCheatPanelAdmin,
   getCoinStatisticsAdmin,
   distributeRewardsAdmin,
+  sendLeaderboardPushAdmin,
   manageAnnouncementAdmin,
   getAdminLogs
 } from './controllers/leaderboardController.js';
@@ -429,6 +430,7 @@ app.post('/api/admin/leaderboard/adjust-score', authenticateAdmin, adjustPlayerS
 app.get('/api/admin/leaderboard/anti-cheat', authenticateAdmin, getAntiCheatPanelAdmin);
 app.get('/api/admin/leaderboard/coin-stats', authenticateAdmin, getCoinStatisticsAdmin);
 app.post('/api/admin/leaderboard/distribute', authenticateAdmin, distributeRewardsAdmin);
+app.post('/api/admin/leaderboard/notify', authenticateAdmin, sendLeaderboardPushAdmin);
 app.post('/api/admin/leaderboard/announcement', authenticateAdmin, manageAnnouncementAdmin);
 app.get('/api/admin/leaderboard/logs', authenticateAdmin, getAdminLogs);
 

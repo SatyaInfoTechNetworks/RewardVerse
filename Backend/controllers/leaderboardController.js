@@ -1,5 +1,6 @@
 import pool from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
+import { sendNotification, broadcastNotification } from '../utils/notifications.js';
 
 /**
  * Helper: Calculate Dynamic Prize Pool
@@ -896,6 +897,17 @@ export const distributeRewardsAdmin = async (req, res) => {
           [uuidv4(), leaderboard_id || uuidv4(), user_id, rank, coins]
         );
 
+        // 4. Send FCM Push Notification to Winner
+        try {
+          await sendNotification(
+            user_id,
+            `🎉 Congratulations! You won ${coins.toLocaleString()} Coins!`,
+            `You placed Rank #${rank} in the Leaderboard Contest. ${coins.toLocaleString()} Coins have been credited to your wallet balance!`
+          );
+        } catch (fcmErr) {
+          console.warn(`⚠️ FCM push notification warning for winner ${user_id}:`, fcmErr.message);
+        }
+
         distributedCount++;
         totalCoinsDistributed += coins;
       }
@@ -904,18 +916,43 @@ export const distributeRewardsAdmin = async (req, res) => {
     // Record audit log
     await pool.query(
       `INSERT INTO leaderboard_logs (id, admin_id, action, target_user, details) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), req.user?.id || 'admin', 'Winner Approved', `${distributedCount} Winners`, `Distributed total of ${totalCoinsDistributed} coins to ${distributedCount} winners.`]
+      [uuidv4(), req.user?.id || 'admin', 'Winner Approved', `${distributedCount} Winners`, `Distributed total of ${totalCoinsDistributed} coins to ${distributedCount} winners and sent FCM push notifications.`]
     );
 
     res.json({
       success: true,
-      message: `Successfully distributed ${totalCoinsDistributed} coins to ${distributedCount} winners.`,
+      message: `Successfully distributed ${totalCoinsDistributed} coins to ${distributedCount} winners and sent FCM push notifications!`,
       winners_processed: distributedCount,
       total_coins: totalCoinsDistributed
     });
   } catch (error) {
     console.error('Error distributing leaderboard rewards:', error);
     res.status(500).json({ success: false, message: 'Failed to distribute rewards.' });
+  }
+};
+
+/**
+ * POST /api/admin/leaderboard/notify
+ * Send FCM Push notifications for leaderboard announcements or custom winner notifications
+ */
+export const sendLeaderboardPushAdmin = async (req, res) => {
+  try {
+    const { target_type, target_user_id, title, message } = req.body;
+
+    if (!title || !message) {
+      return res.status(400).json({ success: false, message: 'Title and message are required.' });
+    }
+
+    if (target_type === 'specific' && target_user_id) {
+      const success = await sendNotification(target_user_id, title, message);
+      return res.json({ success, message: success ? 'FCM Push notification sent to winner!' : 'Failed to deliver FCM push notification.' });
+    } else {
+      const result = await broadcastNotification(title, message);
+      return res.json({ success: true, message: `FCM Push broadcast dispatched to ${result.sentCount} users.`, result });
+    }
+  } catch (error) {
+    console.error('Error sending leaderboard push notification:', error);
+    res.status(500).json({ success: false, message: 'Failed to send FCM push notification.' });
   }
 };
 
