@@ -539,7 +539,7 @@ export const getUserLeaderboardProfile = async (req, res) => {
        FROM users u
        LEFT JOIN transactions t ON u.id = t.user_id
        WHERE u.id = ?
-       GROUP BY u.id`,
+       GROUP BY u.id, u.user_id, u.name, u.email, u.balance, u.profile_pic, u.created_at`,
       [userId]
     );
 
@@ -875,13 +875,15 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
         COALESCE(SUM(CASE WHEN t.type = 'CREDIT' THEN t.amount ELSE 0 END), 0) as total_coins,
         COUNT(DISTINCT CASE WHEN t.source = 'OFFER' THEN t.id END) as offers_count,
         COUNT(DISTINCT ru.id) as referrals_count,
-        df.android_id, df.ip_address, df.is_emulator
+        MAX(df.android_id) as android_id,
+        MAX(df.ip_address) as ip_address,
+        MAX(df.is_emulator) as is_emulator
       FROM users u
       LEFT JOIN transactions t ON u.id = t.user_id
       LEFT JOIN referral_uses ru ON u.id = ru.referrer_id
       LEFT JOIN device_fingerprints df ON u.id = df.user_id
       ${searchCond}
-      GROUP BY u.id
+      GROUP BY u.id, u.user_id, u.name, u.email, u.profile_pic, u.balance, u.created_at, u.is_banned, u.ban_reason
       ORDER BY total_coins DESC
       LIMIT ? OFFSET ?
     `;
