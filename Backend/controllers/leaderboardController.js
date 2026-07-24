@@ -215,9 +215,62 @@ export const getEarningsLeaderboard = async (req, res) => {
       }
     }
 
+    // Fetch matching leaderboard contest metadata & tiers from database
+    const [lbs] = await pool.query(
+      `SELECT * FROM leaderboards WHERE type = 'EARNINGS' AND period = ? AND status = 'ACTIVE' LIMIT 1`,
+      [period]
+    );
+
+    let leaderboardInfo = null;
+    let rewardTiers = [];
+
+    if (lbs.length > 0) {
+      const lb = lbs[0];
+
+      const [partCount] = await pool.query(`SELECT COUNT(*) as total FROM users`);
+      const totalParticipants = partCount[0]?.total || 0;
+      let calculatedPool = parseFloat(lb.reward_pool) || 0;
+
+      if (lb.dynamic_pool_enabled) {
+        calculatedPool = calculateDynamicPool(lb.reward_pool, lb.pool_growth_per_user, lb.max_pool_cap, totalParticipants);
+      }
+
+      leaderboardInfo = {
+        id: lb.id,
+        name: lb.name,
+        type: lb.type,
+        period: lb.period,
+        base_reward_pool: parseFloat(lb.reward_pool),
+        prize_pool_coins: Math.round(calculatedPool),
+        max_winners: lb.max_winners,
+        minimum_score: parseFloat(lb.minimum_score),
+        start_date: lb.start_date,
+        end_date: lb.end_date
+      };
+
+      const [tiers] = await pool.query(
+        `SELECT start_rank, end_rank, reward_coins FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
+        [lb.id]
+      );
+
+      rewardTiers = tiers.map(t => ({
+        start_rank: t.start_rank,
+        end_rank: t.end_rank,
+        reward_coins: parseFloat(t.reward_coins),
+        display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
+      }));
+    }
+
     res.json({
       success: true,
       period,
+      leaderboard: leaderboardInfo || {
+        name: `${period} Earnings Leaderboard`,
+        period,
+        prize_pool_coins: 5000,
+        max_winners: 20
+      },
+      reward_tiers: rewardTiers,
       rankings,
       my_rank: myRankInfo
     });
@@ -273,9 +326,62 @@ export const getReferralLeaderboard = async (req, res) => {
       referral_earnings: parseFloat(row.referral_earnings)
     }));
 
+    // Fetch matching referral leaderboard contest metadata & tiers from database
+    const [lbs] = await pool.query(
+      `SELECT * FROM leaderboards WHERE type = 'REFERRAL' AND period = ? AND status = 'ACTIVE' LIMIT 1`,
+      [period]
+    );
+
+    let leaderboardInfo = null;
+    let rewardTiers = [];
+
+    if (lbs.length > 0) {
+      const lb = lbs[0];
+
+      const [partCount] = await pool.query(`SELECT COUNT(*) as total FROM users`);
+      const totalParticipants = partCount[0]?.total || 0;
+      let calculatedPool = parseFloat(lb.reward_pool) || 0;
+
+      if (lb.dynamic_pool_enabled) {
+        calculatedPool = calculateDynamicPool(lb.reward_pool, lb.pool_growth_per_user, lb.max_pool_cap, totalParticipants);
+      }
+
+      leaderboardInfo = {
+        id: lb.id,
+        name: lb.name,
+        type: lb.type,
+        period: lb.period,
+        base_reward_pool: parseFloat(lb.reward_pool),
+        prize_pool_coins: Math.round(calculatedPool),
+        max_winners: lb.max_winners,
+        minimum_referrals: lb.minimum_referrals,
+        start_date: lb.start_date,
+        end_date: lb.end_date
+      };
+
+      const [tiers] = await pool.query(
+        `SELECT start_rank, end_rank, reward_coins FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
+        [lb.id]
+      );
+
+      rewardTiers = tiers.map(t => ({
+        start_rank: t.start_rank,
+        end_rank: t.end_rank,
+        reward_coins: parseFloat(t.reward_coins),
+        display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
+      }));
+    }
+
     res.json({
       success: true,
       period,
+      leaderboard: leaderboardInfo || {
+        name: `${period} Referral Leaderboard`,
+        period,
+        prize_pool_coins: 3000,
+        max_winners: 10
+      },
+      reward_tiers: rewardTiers,
       rankings
     });
   } catch (error) {
