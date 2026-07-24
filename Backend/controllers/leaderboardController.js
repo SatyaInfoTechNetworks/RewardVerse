@@ -77,10 +77,10 @@ export const getHomeLeaderboardBanner = async (req, res) => {
         userRank = userEntries[0].rank || null;
         userScore = parseFloat(userEntries[0].score) || 0;
       } else {
-        // Calculate user earnings this month
+        // Calculate user non-referral earnings this month
         const [userTx] = await pool.query(
           `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-           WHERE user_id = ? AND type = 'CREDIT' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
+           WHERE user_id = ? AND type = 'CREDIT' AND (source IS NULL OR UPPER(source) != 'REFERRAL') AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
           [userId]
         );
         userScore = parseFloat(userTx[0]?.total) || 0;
@@ -91,7 +91,7 @@ export const getHomeLeaderboardBanner = async (req, res) => {
         `SELECT score FROM (
            SELECT COALESCE(SUM(amount), 0) as score
            FROM transactions
-           WHERE type = 'CREDIT' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
+           WHERE type = 'CREDIT' AND (source IS NULL OR UPPER(source) != 'REFERRAL') AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
            GROUP BY user_id
            ORDER BY score DESC
            LIMIT 10
@@ -155,7 +155,10 @@ export const getEarningsLeaderboard = async (req, res) => {
       dateCondition = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
     }
 
-    // Fetch Top Earners based on transactions ledger
+    // Exclude referral commission coins from Earnings Leaderboard
+    const nonReferralCondition = "t.type = 'CREDIT' AND (t.source IS NULL OR UPPER(t.source) != 'REFERRAL')";
+
+    // Fetch Top Earners based on non-referral transactions ledger
     const [rows] = await pool.query(
       `SELECT 
          u.id as user_id,
@@ -166,7 +169,7 @@ export const getEarningsLeaderboard = async (req, res) => {
          COUNT(DISTINCT CASE WHEN t.source = 'OFFER' THEN t.id END) as offers_completed
        FROM users u
        JOIN transactions t ON u.id = t.user_id
-       WHERE t.type = 'CREDIT' AND u.is_banned = FALSE AND ${dateCondition}
+       WHERE ${nonReferralCondition} AND u.is_banned = FALSE AND ${dateCondition}
        GROUP BY u.id
        ORDER BY CAST(score AS DECIMAL(15,2)) DESC
        LIMIT ?`,
@@ -190,7 +193,7 @@ export const getEarningsLeaderboard = async (req, res) => {
         myRankInfo = rankings[myIndex];
       } else {
         const [myScoreRes] = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t WHERE user_id = ? AND type = 'CREDIT' AND ${dateCondition}`,
+          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t WHERE user_id = ? AND ${nonReferralCondition} AND ${dateCondition}`,
           [userId]
         );
         const myScore = parseFloat(myScoreRes[0]?.score) || 0;
@@ -199,7 +202,7 @@ export const getEarningsLeaderboard = async (req, res) => {
         const [rankRes] = await pool.query(
           `SELECT COUNT(DISTINCT user_id) + 1 as rank FROM (
              SELECT user_id, SUM(amount) as total FROM transactions t 
-             WHERE type = 'CREDIT' AND ${dateCondition}
+             WHERE ${nonReferralCondition} AND ${dateCondition}
              GROUP BY user_id HAVING total > ?
            ) higher`,
           [myScore]
