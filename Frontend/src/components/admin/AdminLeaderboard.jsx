@@ -93,17 +93,20 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
   // Audit Logs state
   const [logsList, setLogsList] = useState([]);
 
-  // Load Data on mount / tab switch
-  useEffect(() => {
+  const refreshAllData = () => {
     fetchDashboardOverview();
     fetchLeaderboards();
-  }, []);
-
-  useEffect(() => {
     if (subTab === 'participants') fetchParticipants();
     if (subTab === 'anti_cheat') fetchAntiCheat();
     if (subTab === 'coin_stats') fetchCoinStats();
     if (subTab === 'logs') fetchLogs();
+  };
+
+  // Auto-refresh real-time data every 15 seconds
+  useEffect(() => {
+    refreshAllData();
+    const interval = setInterval(refreshAllData, 15000);
+    return () => clearInterval(interval);
   }, [subTab, playersPage, playersSearch]);
 
   const fetchDashboardOverview = async () => {
@@ -304,10 +307,15 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
               <p className="text-muted text-xs mb-0">Manage Dynamic Prize Pools, Tier Builders, Anti-Cheat & Distribution</p>
             </div>
             
-            {/* Dynamic Prize Pool Live Ticker Badge */}
-            <div className="bg-gradient-warning text-dark px-3 py-2 rounded-lg shadow-sm font-weight-bold text-sm">
-              <i className="fas fa-coins mr-1"></i> Live Prize Pool: <strong>{dashStats.prize_pool_coins?.toLocaleString()} Coins</strong>
-              <span className="badge badge-dark ml-2">Growing Dynamic</span>
+            {/* Dynamic Prize Pool Live Ticker Badge & Refresh Button */}
+            <div className="d-flex align-items-center">
+              <button onClick={refreshAllData} className="btn btn-sm btn-outline-primary font-weight-bold mr-2">
+                <i className="fas fa-sync-alt mr-1"></i> Live Realtime Sync
+              </button>
+              <div className="bg-gradient-warning text-dark px-3 py-2 rounded-lg shadow-sm font-weight-bold text-sm">
+                <i className="fas fa-coins mr-1"></i> Live Prize Pool: <strong>{dashStats.prize_pool_coins?.toLocaleString()} Coins</strong>
+                <span className="badge badge-dark ml-2">Growing Dynamic</span>
+              </div>
             </div>
           </div>
 

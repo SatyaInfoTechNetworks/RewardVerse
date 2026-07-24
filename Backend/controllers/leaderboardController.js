@@ -382,8 +382,8 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
     // 1. Active Leaderboards count
     const [actLb] = await pool.query(`SELECT COUNT(*) as total FROM leaderboards WHERE status = 'ACTIVE'`);
 
-    // 2. Participants count
-    const [partCount] = await pool.query(`SELECT COUNT(DISTINCT user_id) as total FROM leaderboard_entries`);
+    // 2. Real Participants count across platform
+    const [partCount] = await pool.query(`SELECT COUNT(*) as total FROM users`);
 
     // 3. Dynamic Prize Pool Sum
     const [lbs] = await pool.query(`SELECT reward_pool, dynamic_pool_enabled, pool_growth_per_user, max_pool_cap FROM leaderboards WHERE status = 'ACTIVE'`);
@@ -398,7 +398,7 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
     });
 
     // 4. Rewards Pending
-    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM leaderboard_entries WHERE qualified = TRUE AND \`rank\` <= 20`);
+    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM users WHERE is_banned = FALSE AND balance > 0`);
 
     // 5. Rewards Distributed
     const [distRes] = await pool.query(`SELECT COALESCE(SUM(reward_coins), 0) as total_coins, COUNT(*) as total_rewards FROM leaderboard_rewards`);
@@ -410,12 +410,12 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
     res.json({
       success: true,
       stats: {
-        active_leaderboards: actLb[0]?.total || 6,
-        participants: participants || 4821,
-        prize_pool_coins: Math.round(totalPrizePool) || 62000,
-        rewards_pending: pendingRes[0]?.total || 14,
-        rewards_distributed: distRes[0]?.total_rewards || 2541,
-        total_reward_coins_given: parseFloat(distRes[0]?.total_coins) || 120000,
+        active_leaderboards: actLb[0]?.total || 0,
+        participants: participants || 0,
+        prize_pool_coins: Math.round(totalPrizePool) || 0,
+        rewards_pending: pendingRes[0]?.total || 0,
+        rewards_distributed: distRes[0]?.total_rewards || 0,
+        total_reward_coins_given: parseFloat(distRes[0]?.total_coins) || 0,
         current_season: currentSeason
       }
     });
@@ -431,7 +431,46 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
  */
 export const listAdminLeaderboards = async (req, res) => {
   try {
-    const [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
+    let [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
+
+    // Auto-seed default leaderboards if table is empty
+    if (leaderboards.length === 0) {
+      const defaultLbs = [
+        { name: 'Daily Earnings', type: 'EARNINGS', period: 'DAILY', reward_pool: 5000, pool_growth_per_user: 5, max_pool_cap: 25000, max_winners: 20 },
+        { name: 'Weekly Earnings', type: 'EARNINGS', period: 'WEEKLY', reward_pool: 15000, pool_growth_per_user: 10, max_pool_cap: 50000, max_winners: 30 },
+        { name: 'Monthly Earnings', type: 'EARNINGS', period: 'MONTHLY', reward_pool: 42500, pool_growth_per_user: 15, max_pool_cap: 100000, max_winners: 50 },
+        { name: 'All Time Earnings', type: 'EARNINGS', period: 'ALL_TIME', reward_pool: 100000, pool_growth_per_user: 25, max_pool_cap: 250000, max_winners: 100 },
+        { name: 'Daily Referrals', type: 'REFERRAL', period: 'DAILY', reward_pool: 3000, pool_growth_per_user: 5, max_pool_cap: 15000, max_winners: 10 },
+        { name: 'Monthly Referrals', type: 'REFERRAL', period: 'MONTHLY', reward_pool: 25000, pool_growth_per_user: 15, max_pool_cap: 75000, max_winners: 25 }
+      ];
+
+      for (const d of defaultLbs) {
+        const lbId = uuidv4();
+        await pool.query(
+          `INSERT INTO leaderboards (id, name, type, period, reward_pool, dynamic_pool_enabled, pool_growth_per_user, max_pool_cap, max_winners, show_on_home, status)
+           VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, TRUE, 'ACTIVE')`,
+          [lbId, d.name, d.type, d.period, d.reward_pool, d.pool_growth_per_user, d.max_pool_cap, d.max_winners]
+        );
+
+        const defaultTiers = [
+          { start_rank: 1, end_rank: 1, reward_coins: Math.round(d.reward_pool * 0.3) },
+          { start_rank: 2, end_rank: 2, reward_coins: Math.round(d.reward_pool * 0.2) },
+          { start_rank: 3, end_rank: 3, reward_coins: Math.round(d.reward_pool * 0.1) },
+          { start_rank: 4, end_rank: 10, reward_coins: Math.round((d.reward_pool * 0.25) / 7) },
+          { start_rank: 11, end_rank: d.max_winners, reward_coins: Math.round((d.reward_pool * 0.15) / Math.max(1, d.max_winners - 10)) }
+        ];
+
+        for (const t of defaultTiers) {
+          await pool.query(
+            `INSERT INTO leaderboard_reward_tiers (id, leaderboard_id, start_rank, end_rank, reward_coins)
+             VALUES (?, ?, ?, ?, ?)`,
+            [uuidv4(), lbId, t.start_rank, t.end_rank, t.reward_coins]
+          );
+        }
+      }
+
+      [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
+    }
 
     // Fetch tiers for each leaderboard
     for (const lb of leaderboards) {
@@ -571,8 +610,8 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
     );
 
     const stats = allUsers[0] || {};
-    const qualifiedCount = await pool.query(`SELECT COUNT(*) as count FROM users WHERE is_banned = FALSE`);
-    const notQualifiedCount = await pool.query(`SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE`);
+    const [qualifiedCount] = await pool.query(`SELECT COUNT(*) as count FROM users WHERE is_banned = FALSE`);
+    const [notQualifiedCount] = await pool.query(`SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE`);
 
     // Fetch players list with device/anti-cheat context
     let searchCond = "";
@@ -647,18 +686,18 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
     res.json({
       success: true,
       participant_stats: {
-        qualified_users: qualifiedCount[0][0]?.count || 320,
-        not_qualified: notQualifiedCount[0][0]?.count || 2814,
-        average_coins: Math.round(parseFloat(stats.avg_score) || 6200),
-        highest_coins: parseFloat(stats.highest_score) || 45800,
-        lowest_qualified: parseFloat(stats.lowest_qualified) || 520
+        qualified_users: qualifiedCount[0]?.count || 0,
+        not_qualified: notQualifiedCount[0]?.count || 0,
+        average_coins: Math.round(parseFloat(stats.avg_score) || 0),
+        highest_coins: parseFloat(stats.highest_score) || 0,
+        lowest_qualified: parseFloat(stats.lowest_qualified) || 0
       },
       players: formattedPlayers,
       pagination: {
         total: totalPlayers,
         page,
         limit,
-        pages: Math.ceil(totalPlayers / limit)
+        pages: Math.ceil(totalPlayers / limit) || 1
       }
     });
   } catch (error) {
@@ -807,13 +846,13 @@ export const getCoinStatisticsAdmin = async (req, res) => {
     res.json({
       success: true,
       coin_stats: {
-        coins_earned_today: Math.round(parseFloat(todayCoins[0]?.total) || 145210),
-        coins_distributed: Math.round(parseFloat(totalCoins[0]?.total) || 138400),
-        leaderboard_rewards: Math.round(leaderboardRewards || 12000),
-        offer_rewards: Math.round(offerRewards || 110000),
-        referral_rewards: Math.round(referralRewards || 8000),
-        watch_ad_rewards: Math.round(watchAdRewards || 8400),
-        current_coin_supply: Math.round(parseFloat(coinSupply[0]?.total) || 5830220)
+        coins_earned_today: Math.round(parseFloat(todayCoins[0]?.total) || 0),
+        coins_distributed: Math.round(parseFloat(totalCoins[0]?.total) || 0),
+        leaderboard_rewards: Math.round(leaderboardRewards || 0),
+        offer_rewards: Math.round(offerRewards || 0),
+        referral_rewards: Math.round(referralRewards || 0),
+        watch_ad_rewards: Math.round(watchAdRewards || 0),
+        current_coin_supply: Math.round(parseFloat(coinSupply[0]?.total) || 0)
       }
     });
   } catch (error) {
