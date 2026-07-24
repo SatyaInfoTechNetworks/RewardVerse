@@ -64,7 +64,7 @@ export const getHomeLeaderboardBanner = async (req, res) => {
     if (userId) {
       // User's monthly earnings rank
       const [userEntries] = await pool.query(
-        `SELECT le.score, le.rank 
+        `SELECT le.score, le.\`rank\` 
          FROM leaderboard_entries le
          JOIN leaderboards l ON le.leaderboard_id = l.id
          WHERE le.user_id = ? AND l.period = 'MONTHLY' AND l.type = 'EARNINGS' AND le.is_disqualified = FALSE
@@ -349,7 +349,7 @@ export const getUserLeaderboardProfile = async (req, res) => {
 export const getLeaderboardHistory = async (req, res) => {
   try {
     const [history] = await pool.query(
-      `SELECT lr.id, lr.rank, lr.reward_coins, lr.status, lr.rewarded_at,
+      `SELECT lr.id, lr.\`rank\`, lr.reward_coins, lr.status, lr.rewarded_at,
               u.name as winner_name, u.profile_pic, l.name as leaderboard_name, l.period, l.type
        FROM leaderboard_rewards lr
        JOIN users u ON lr.user_id = u.id
@@ -398,7 +398,7 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
     });
 
     // 4. Rewards Pending
-    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM leaderboard_entries WHERE qualified = TRUE AND rank <= 20`);
+    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM leaderboard_entries WHERE qualified = TRUE AND \`rank\` <= 20`);
 
     // 5. Rewards Distributed
     const [distRes] = await pool.query(`SELECT COALESCE(SUM(reward_coins), 0) as total_coins, COUNT(*) as total_rewards FROM leaderboard_rewards`);
@@ -853,7 +853,7 @@ export const distributeRewardsAdmin = async (req, res) => {
 
         // 3. Record in leaderboard_rewards table
         await pool.query(
-          `INSERT INTO leaderboard_rewards (id, leaderboard_id, user_id, rank, reward_coins, status) VALUES (?, ?, ?, ?, ?, 'DISTRIBUTED')`,
+          `INSERT INTO leaderboard_rewards (id, leaderboard_id, user_id, \`rank\`, reward_coins, status) VALUES (?, ?, ?, ?, ?, 'DISTRIBUTED')`,
           [uuidv4(), leaderboard_id || uuidv4(), user_id, rank, coins]
         );
 
