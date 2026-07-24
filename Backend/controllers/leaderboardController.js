@@ -167,7 +167,7 @@ export const getEarningsLeaderboard = async (req, res) => {
        JOIN transactions t ON u.id = t.user_id
        WHERE t.type = 'CREDIT' AND u.is_banned = FALSE AND ${dateCondition}
        GROUP BY u.id
-       ORDER BY score DESC
+       ORDER BY CAST(score AS DECIMAL(15,2)) DESC
        LIMIT ?`,
       [limit]
     );
