@@ -13,6 +13,122 @@ const calculateDynamicPool = (basePool, growthPerUser, maxCap, userCount) => {
   return Math.min(base + dynamicBonus, cap);
 };
 
+/**
+ * Helper: Period & Contest Specific Default Prize Pools & Reward Tiers
+ */
+const getDefaultContestDetails = (type, period) => {
+  const p = (period || 'DAILY').toUpperCase();
+  const t = (type || 'EARNINGS').toUpperCase();
+
+  if (t === 'EARNINGS') {
+    if (p === 'DAILY') {
+      return {
+        name: 'Daily Earnings Leaderboard',
+        prize_pool_coins: 5000,
+        max_winners: 20,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 1500, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 1000, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 500, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 200, display_label: 'Rank 4-10' },
+          { start_rank: 11, end_rank: 20, reward_coins: 60, display_label: 'Rank 11-20' }
+        ]
+      };
+    } else if (p === 'WEEKLY') {
+      return {
+        name: 'Weekly Earnings Leaderboard',
+        prize_pool_coins: 15000,
+        max_winners: 30,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 4500, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 3000, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 1500, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 500, display_label: 'Rank 4-10' },
+          { start_rank: 11, end_rank: 30, reward_coins: 125, display_label: 'Rank 11-30' }
+        ]
+      };
+    } else if (p === 'MONTHLY') {
+      return {
+        name: 'Monthly Earnings Leaderboard',
+        prize_pool_coins: 42500,
+        max_winners: 50,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 12500, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 8500, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 4250, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 1500, display_label: 'Rank 4-10' },
+          { start_rank: 11, end_rank: 50, reward_coins: 170, display_label: 'Rank 11-50' }
+        ]
+      };
+    } else {
+      return {
+        name: 'All Time Earnings Leaderboard',
+        prize_pool_coins: 100000,
+        max_winners: 100,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 30000, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 20000, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 10000, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 3500, display_label: 'Rank 4-10' },
+          { start_rank: 11, end_rank: 100, reward_coins: 170, display_label: 'Rank 11-100' }
+        ]
+      };
+    }
+  } else {
+    if (p === 'DAILY') {
+      return {
+        name: 'Daily Referral Leaderboard',
+        prize_pool_coins: 3000,
+        max_winners: 10,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 1000, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 600, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 400, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 140, display_label: 'Rank 4-10' }
+        ]
+      };
+    } else if (p === 'WEEKLY') {
+      return {
+        name: 'Weekly Referral Leaderboard',
+        prize_pool_coins: 10000,
+        max_winners: 15,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 3000, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 2000, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 1000, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 15, reward_coins: 330, display_label: 'Rank 4-15' }
+        ]
+      };
+    } else if (p === 'MONTHLY') {
+      return {
+        name: 'Monthly Referral Leaderboard',
+        prize_pool_coins: 25000,
+        max_winners: 25,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 7500, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 5000, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 2500, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 1000, display_label: 'Rank 4-10' },
+          { start_rank: 11, end_rank: 25, reward_coins: 200, display_label: 'Rank 11-25' }
+        ]
+      };
+    } else {
+      return {
+        name: 'All Time Referral Leaderboard',
+        prize_pool_coins: 50000,
+        max_winners: 50,
+        reward_tiers: [
+          { start_rank: 1, end_rank: 1, reward_coins: 15000, display_label: 'Rank 1' },
+          { start_rank: 2, end_rank: 2, reward_coins: 10000, display_label: 'Rank 2' },
+          { start_rank: 3, end_rank: 3, reward_coins: 5000, display_label: 'Rank 3' },
+          { start_rank: 4, end_rank: 10, reward_coins: 2000, display_label: 'Rank 4-10' },
+          { start_rank: 11, end_rank: 50, reward_coins: 150, display_label: 'Rank 11-50' }
+        ]
+      };
+    }
+  }
+};
+
 // ==========================================
 // USER API ENDPOINTS
 // ==========================================
@@ -221,6 +337,7 @@ export const getEarningsLeaderboard = async (req, res) => {
       [period]
     );
 
+    const defaultDetails = getDefaultContestDetails('EARNINGS', period);
     let leaderboardInfo = null;
     let rewardTiers = [];
 
@@ -253,23 +370,31 @@ export const getEarningsLeaderboard = async (req, res) => {
         [lb.id]
       );
 
-      rewardTiers = tiers.map(t => ({
-        start_rank: t.start_rank,
-        end_rank: t.end_rank,
-        reward_coins: parseFloat(t.reward_coins),
-        display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
-      }));
+      if (tiers.length > 0) {
+        rewardTiers = tiers.map(t => ({
+          start_rank: t.start_rank,
+          end_rank: t.end_rank,
+          reward_coins: parseFloat(t.reward_coins),
+          display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
+        }));
+      } else {
+        rewardTiers = defaultDetails.reward_tiers;
+      }
+    } else {
+      leaderboardInfo = {
+        name: defaultDetails.name,
+        type: 'EARNINGS',
+        period,
+        prize_pool_coins: defaultDetails.prize_pool_coins,
+        max_winners: defaultDetails.max_winners
+      };
+      rewardTiers = defaultDetails.reward_tiers;
     }
 
     res.json({
       success: true,
       period,
-      leaderboard: leaderboardInfo || {
-        name: `${period} Earnings Leaderboard`,
-        period,
-        prize_pool_coins: 5000,
-        max_winners: 20
-      },
+      leaderboard: leaderboardInfo,
       reward_tiers: rewardTiers,
       rankings,
       my_rank: myRankInfo
@@ -332,6 +457,7 @@ export const getReferralLeaderboard = async (req, res) => {
       [period]
     );
 
+    const defaultDetails = getDefaultContestDetails('REFERRAL', period);
     let leaderboardInfo = null;
     let rewardTiers = [];
 
@@ -364,23 +490,31 @@ export const getReferralLeaderboard = async (req, res) => {
         [lb.id]
       );
 
-      rewardTiers = tiers.map(t => ({
-        start_rank: t.start_rank,
-        end_rank: t.end_rank,
-        reward_coins: parseFloat(t.reward_coins),
-        display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
-      }));
+      if (tiers.length > 0) {
+        rewardTiers = tiers.map(t => ({
+          start_rank: t.start_rank,
+          end_rank: t.end_rank,
+          reward_coins: parseFloat(t.reward_coins),
+          display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
+        }));
+      } else {
+        rewardTiers = defaultDetails.reward_tiers;
+      }
+    } else {
+      leaderboardInfo = {
+        name: defaultDetails.name,
+        type: 'REFERRAL',
+        period,
+        prize_pool_coins: defaultDetails.prize_pool_coins,
+        max_winners: defaultDetails.max_winners
+      };
+      rewardTiers = defaultDetails.reward_tiers;
     }
 
     res.json({
       success: true,
       period,
-      leaderboard: leaderboardInfo || {
-        name: `${period} Referral Leaderboard`,
-        period,
-        prize_pool_coins: 3000,
-        max_winners: 10
-      },
+      leaderboard: leaderboardInfo,
       reward_tiers: rewardTiers,
       rankings
     });
