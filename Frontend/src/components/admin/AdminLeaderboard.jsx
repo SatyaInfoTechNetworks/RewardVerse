@@ -366,18 +366,18 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
 
   return (
     <div className="container-fluid py-2">
-      {/* EXECUTIVE HEADER BANNER */}
-      <div className="card border-0 shadow-lg mb-4 rounded-xl text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+      {/* EXECUTIVE HEADER CARD */}
+      <div className="card border shadow-sm mb-4 rounded-lg bg-white">
         <div className="card-body p-4">
           <div className="d-flex flex-wrap align-items-center justify-content-between">
             <div className="mb-2 mb-md-0">
               <div className="d-flex align-items-center">
-                <div className="bg-warning text-dark rounded-circle p-3 mr-3 shadow">
+                <div className="bg-primary text-white rounded-circle p-3 mr-3 shadow-sm">
                   <i className="fas fa-trophy fa-2x"></i>
                 </div>
                 <div>
-                  <h3 className="font-weight-bold mb-1 text-white">Leaderboard Master Control</h3>
-                  <p className="text-slate-300 text-sm mb-0">
+                  <h3 className="font-weight-bold mb-1 text-dark">Leaderboard Master Control</h3>
+                  <p className="text-muted text-sm mb-0 font-weight-bold">
                     Manage Dynamic Prize Pools, Tier Builders, Anti-Cheat & FCM Winner Distributions
                   </p>
                 </div>
@@ -385,7 +385,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
             </div>
             
             <div className="d-flex flex-wrap align-items-center">
-              <button onClick={refreshAllData} className="btn btn-outline-light btn-sm font-weight-bold mr-2 mb-2 mb-md-0 shadow-sm">
+              <button onClick={refreshAllData} className="btn btn-outline-primary btn-sm font-weight-bold mr-2 mb-2 mb-md-0 shadow-sm">
                 <i className="fas fa-sync-alt mr-1"></i> Sync Realtime
               </button>
               <button
@@ -416,24 +416,24 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                   });
                   setSubTab('builder');
                 }}
-                className="btn btn-warning btn-sm text-dark font-weight-bold mr-2 mb-2 mb-md-0 shadow"
+                className="btn btn-primary btn-sm font-weight-bold mr-2 mb-2 mb-md-0 shadow-sm"
               >
                 <i className="fas fa-plus-circle mr-1"></i> + Create Custom Contest
               </button>
-              <div className="bg-dark border border-warning text-warning px-3 py-2 rounded-lg shadow-sm font-weight-bold text-sm">
+              <div className="bg-warning text-dark border px-3 py-2 rounded-lg shadow-sm font-weight-bold text-sm">
                 <i className="fas fa-coins mr-1"></i> Total Pool: <strong>{dashStats.prize_pool_coins?.toLocaleString()} Coins</strong>
               </div>
             </div>
           </div>
 
-          <hr className="border-secondary my-3" />
+          <hr className="my-3" />
 
           {/* MAIN 5-TAB NAVIGATION SYSTEM */}
-          <ul className="nav nav-pills card-header-pills font-weight-bold">
+          <ul className="nav nav-pills font-weight-bold">
             <li className="nav-item mr-2 mb-2">
               <button
                 onClick={() => setSubTab('overview')}
-                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'overview' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+                className={`nav-link px-3 py-2 rounded-lg ${subTab === 'overview' ? 'active bg-primary text-white shadow-sm' : 'bg-light text-dark border'}`}
               >
                 <i className="fas fa-chart-pie mr-2"></i> 📊 Contests Overview ({leaderboardsList.length})
               </button>
@@ -441,7 +441,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
             <li className="nav-item mr-2 mb-2">
               <button
                 onClick={() => setSubTab('builder')}
-                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'builder' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+                className={`nav-link px-3 py-2 rounded-lg ${subTab === 'builder' ? 'active bg-primary text-white shadow-sm' : 'bg-light text-dark border'}`}
               >
                 <i className="fas fa-layer-group mr-2"></i> 🏆 Contest & Tier Builder
               </button>
@@ -449,7 +449,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
             <li className="nav-item mr-2 mb-2">
               <button
                 onClick={() => setSubTab('players')}
-                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'players' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+                className={`nav-link px-3 py-2 rounded-lg ${subTab === 'players' ? 'active bg-primary text-white shadow-sm' : 'bg-light text-dark border'}`}
               >
                 <i className="fas fa-users mr-2"></i> 👥 Players & Moderation
               </button>
@@ -457,7 +457,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
             <li className="nav-item mr-2 mb-2">
               <button
                 onClick={() => setSubTab('security')}
-                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'security' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+                className={`nav-link px-3 py-2 rounded-lg ${subTab === 'security' ? 'active bg-primary text-white shadow-sm' : 'bg-light text-dark border'}`}
               >
                 <i className="fas fa-user-shield mr-2"></i> 🛡️ Anti-Cheat Panel
               </button>
@@ -465,7 +465,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
             <li className="nav-item mr-2 mb-2">
               <button
                 onClick={() => setSubTab('payouts')}
-                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'payouts' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+                className={`nav-link px-3 py-2 rounded-lg ${subTab === 'payouts' ? 'active bg-primary text-white shadow-sm' : 'bg-light text-dark border'}`}
               >
                 <i className="fas fa-gift mr-2"></i> 💰 Payouts, FCM & Audit
               </button>
@@ -482,32 +482,32 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
             <div className="col-lg-2 col-md-4 col-6 mb-3">
               <div className="card border-0 shadow-sm rounded-lg bg-primary text-white h-100">
                 <div className="card-body p-3">
-                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Active Contests</span>
-                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.active_leaderboards}</h3>
+                  <span className="text-xs font-weight-bold text-uppercase text-white-50">Active Contests</span>
+                  <h2 className="font-weight-bold text-white mb-0 mt-1">{dashStats.active_leaderboards}</h2>
                 </div>
               </div>
             </div>
             <div className="col-lg-2 col-md-4 col-6 mb-3">
               <div className="card border-0 shadow-sm rounded-lg bg-success text-white h-100">
                 <div className="card-body p-3">
-                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Total Participants</span>
-                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.participants?.toLocaleString()}</h3>
+                  <span className="text-xs font-weight-bold text-uppercase text-white-50">Total Participants</span>
+                  <h2 className="font-weight-bold text-white mb-0 mt-1">{dashStats.participants?.toLocaleString()}</h2>
                 </div>
               </div>
             </div>
             <div className="col-lg-3 col-md-4 col-6 mb-3">
               <div className="card border-0 shadow-sm rounded-lg bg-warning text-dark h-100">
                 <div className="card-body p-3">
-                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Dynamic Prize Pool</span>
-                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.prize_pool_coins?.toLocaleString()} Coins</h3>
+                  <span className="text-xs font-weight-bold text-uppercase text-dark font-weight-bold">Dynamic Prize Pool</span>
+                  <h2 className="font-weight-bold text-dark mb-0 mt-1">{dashStats.prize_pool_coins?.toLocaleString()} Coins</h2>
                 </div>
               </div>
             </div>
             <div className="col-lg-2 col-md-6 col-6 mb-3">
               <div className="card border-0 shadow-sm rounded-lg bg-danger text-white h-100">
                 <div className="card-body p-3">
-                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Rewards Pending</span>
-                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.rewards_pending}</h3>
+                  <span className="text-xs font-weight-bold text-uppercase text-white-50">Rewards Pending</span>
+                  <h2 className="font-weight-bold text-white mb-0 mt-1">{dashStats.rewards_pending}</h2>
                 </div>
               </div>
             </div>
@@ -515,7 +515,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
               <div className="card border-0 shadow-sm rounded-lg bg-dark text-white h-100">
                 <div className="card-body p-3">
                   <span className="text-xs font-weight-bold text-uppercase text-warning">Rewards Distributed</span>
-                  <h3 className="font-weight-bold mb-0 mt-1 text-warning">{dashStats.rewards_distributed?.toLocaleString()} Winners</h3>
+                  <h2 className="font-weight-bold text-warning mb-0 mt-1">{dashStats.rewards_distributed?.toLocaleString()} Winners</h2>
                 </div>
               </div>
             </div>
