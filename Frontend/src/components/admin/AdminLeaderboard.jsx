@@ -91,19 +91,26 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
   // Audit Logs state
   const [logsList, setLogsList] = useState([]);
 
+  // Contest Selector & Archived Seasons State
+  const [selectedContestId, setSelectedContestId] = useState('');
+  const [seasonsList, setSeasonsList] = useState([]);
+
   const refreshAllData = () => {
     fetchDashboardOverview();
     fetchLeaderboards();
     if (subTab === 'players') fetchParticipants();
     if (subTab === 'security') fetchAntiCheat();
-    if (subTab === 'payouts') fetchLogs();
+    if (subTab === 'payouts') {
+      fetchLogs();
+      fetchSeasons();
+    }
   };
 
   useEffect(() => {
     refreshAllData();
     const interval = setInterval(refreshAllData, 15000);
     return () => clearInterval(interval);
-  }, [subTab, playersPage, playersSearch]);
+  }, [subTab, playersPage, playersSearch, selectedContestId]);
 
   const fetchDashboardOverview = async () => {
     try {
@@ -112,6 +119,49 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       if (data.success && data.stats) setDashStats(data.stats);
     } catch (err) {
       console.error('Error fetching dashboard overview:', err);
+    }
+  };
+
+  const fetchSeasons = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/admin/leaderboard/seasons`, { headers: getHeaders() });
+      const data = await res.json();
+      if (data.success) setSeasonsList(data.seasons || []);
+    } catch (err) {
+      console.error('Error fetching archived seasons:', err);
+    }
+  };
+
+  const handleArchiveSnapshot = async () => {
+    let targetId = selectedContestId;
+    if (!targetId && leaderboardsList.length > 0) {
+      targetId = leaderboardsList[0].id;
+    }
+    if (!targetId) {
+      showNotice('error', 'No active contest leaderboard found to snapshot.');
+      return;
+    }
+
+    const selectedLb = leaderboardsList.find(l => l.id === targetId);
+    const defaultName = `${selectedLb?.name || 'Contest'} - ${new Date().toISOString().slice(0, 10)}`;
+    const seasonName = prompt(`Enter snapshot label to archive "${selectedLb?.name}":`, defaultName);
+    if (!seasonName) return;
+
+    try {
+      const res = await fetch(`${apiBase}/api/admin/leaderboard/snapshot`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ leaderboard_id: targetId, season_name: seasonName })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', data.message || 'Season snapshot archived successfully!');
+        fetchSeasons();
+      } else {
+        showNotice('error', data.message);
+      }
+    } catch (err) {
+      showNotice('error', 'Failed to archive season snapshot.');
     }
   };
 
@@ -162,10 +212,10 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     }
   };
 
-  const fetchParticipants = async () => {
+  const fetchParticipants = async (lbId = selectedContestId) => {
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/leaderboard/participants?search=${encodeURIComponent(playersSearch)}&page=${playersPage}&limit=15`,
+        `${apiBase}/api/admin/leaderboard/participants?leaderboard_id=${encodeURIComponent(lbId)}&search=${encodeURIComponent(playersSearch)}&page=${playersPage}&limit=15`,
         { headers: getHeaders() }
       );
       const data = await res.json();
@@ -961,9 +1011,31 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       {subTab === 'players' && (
         <div className="card border-0 shadow-sm rounded-lg">
           <div className="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center">
-            <h5 className="font-weight-bold text-dark mb-0">
-              <i className="fas fa-users text-primary mr-2"></i>Participant Standings & Anti-Cheat Moderation
-            </h5>
+            <div className="d-flex align-items-center flex-wrap mb-2 mb-md-0">
+              <h5 className="font-weight-bold text-dark mb-0 mr-3">
+                <i className="fas fa-users text-primary mr-2"></i>Participant Standings
+              </h5>
+              <div className="d-flex align-items-center">
+                <label className="text-xs font-weight-bold text-muted mr-2 mb-0">Contest:</label>
+                <select
+                  value={selectedContestId}
+                  onChange={(e) => {
+                    setSelectedContestId(e.target.value);
+                    fetchParticipants(e.target.value);
+                  }}
+                  className="form-control form-control-sm border-primary font-weight-bold shadow-sm"
+                  style={{ minWidth: '240px' }}
+                >
+                  <option value="">🏆 All Contests (Overall Lifetime Standings)</option>
+                  {leaderboardsList.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.type} - {l.period})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="form-inline mt-2 mt-md-0">
               <input
                 type="text"
@@ -971,10 +1043,13 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                 onChange={(e) => setPlayersSearch(e.target.value)}
                 placeholder="Search player name, email, UID..."
                 className="form-control form-control-sm mr-2"
-                style={{ width: '250px' }}
+                style={{ width: '220px' }}
               />
-              <button onClick={fetchParticipants} className="btn btn-sm btn-primary">
+              <button onClick={() => fetchParticipants(selectedContestId)} className="btn btn-sm btn-primary mr-2">
                 <i className="fas fa-search"></i>
+              </button>
+              <button onClick={handleArchiveSnapshot} className="btn btn-sm btn-outline-success font-weight-bold">
+                <i className="fas fa-camera mr-1"></i> 📸 Archive Snapshot
               </button>
             </div>
           </div>
@@ -1160,6 +1235,62 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                     <i className="fas fa-save mr-1"></i> Update Home Banner
                   </button>
                 </form>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-12 mb-4">
+            <div className="card border-0 shadow-sm rounded-lg">
+              <div className="card-header bg-white font-weight-bold d-flex justify-content-between align-items-center">
+                <div>
+                  <i className="fas fa-history text-primary mr-2"></i>📜 Archived Past Contest Snapshots & Winner Logs
+                </div>
+                <button onClick={handleArchiveSnapshot} className="btn btn-xs btn-outline-success font-weight-bold">
+                  <i className="fas fa-camera mr-1"></i> Archive Current Snapshot
+                </button>
+              </div>
+              <div className="card-body p-0">
+                {seasonsList.length === 0 ? (
+                  <div className="text-center p-4 text-muted">
+                    <i className="fas fa-archive fa-2x mb-2 d-block text-secondary"></i>
+                    No archived contest snapshots yet. Click <strong>Archive Current Snapshot</strong> above to log today's contest standings!
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle mb-0 text-sm">
+                      <thead className="thead-light text-xs uppercase">
+                        <tr>
+                          <th>Snapshot Label / Season Name</th>
+                          <th>Contest Name</th>
+                          <th>Type & Period</th>
+                          <th>Total Prize Pool</th>
+                          <th>Winners Count</th>
+                          <th>Status</th>
+                          <th>Archived Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {seasonsList.map((s, idx) => (
+                          <tr key={idx}>
+                            <td className="font-weight-bold text-dark">{s.season_name}</td>
+                            <td>{s.leaderboard_name}</td>
+                            <td>
+                              <span className={`badge badge-sm ${s.type === 'EARNINGS' ? 'badge-success' : 'badge-info'}`}>
+                                {s.type} - {s.period}
+                              </span>
+                            </td>
+                            <td className="font-weight-bold text-warning">{parseFloat(s.total_prize_pool).toLocaleString()} Coins</td>
+                            <td>{s.total_winners} Winners</td>
+                            <td>
+                              <span className="badge badge-success px-2 py-1">COMPLETED</span>
+                            </td>
+                            <td className="text-muted text-xs">{new Date(s.created_at || s.end_date).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -67,7 +67,9 @@ import {
   sendLeaderboardPushAdmin,
   manageAnnouncementAdmin,
   getAdminLogs,
-  deleteLeaderboardAdmin
+  deleteLeaderboardAdmin,
+  snapshotLeaderboardSeasonAdmin,
+  getLeaderboardSeasonsAdmin
 } from './controllers/leaderboardController.js';
 import {
   getLifafaDetail,
@@ -436,6 +438,8 @@ app.post('/api/admin/leaderboard/announcement', authenticateAdmin, manageAnnounc
 app.get('/api/admin/leaderboard/logs', authenticateAdmin, getAdminLogs);
 app.delete('/api/admin/leaderboard/delete/:id', authenticateAdmin, deleteLeaderboardAdmin);
 app.post('/api/admin/leaderboard/delete', authenticateAdmin, deleteLeaderboardAdmin);
+app.post('/api/admin/leaderboard/snapshot', authenticateAdmin, snapshotLeaderboardSeasonAdmin);
+app.get('/api/admin/leaderboard/seasons', authenticateAdmin, getLeaderboardSeasonsAdmin);
 
 // ==========================================
 // 12. CONTESTS & GIVEAWAYS ROUTES

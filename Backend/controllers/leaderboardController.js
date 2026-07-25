@@ -799,9 +799,35 @@ export const saveLeaderboardConfigAdmin = async (req, res) => {
 export const getLeaderboardParticipantsAdmin = async (req, res) => {
   try {
     const search = req.query.search || '';
+    const leaderboardId = req.query.leaderboard_id || '';
     const page = parseInt(req.query.page || '1');
     const limit = parseInt(req.query.limit || '20');
     const offset = (page - 1) * limit;
+
+    let targetLb = null;
+    if (leaderboardId) {
+      const [lbs] = await pool.query(`SELECT * FROM leaderboards WHERE id = ?`, [leaderboardId]);
+      if (lbs.length > 0) targetLb = lbs[0];
+    }
+
+    const type = targetLb ? targetLb.type : 'EARNINGS';
+    const period = targetLb ? targetLb.period : 'MONTHLY';
+
+    let txDateCond = "1=1";
+    let ruDateCond = "1=1";
+
+    if (period === 'DAILY') {
+      txDateCond = "DATE(t.created_at) = CURRENT_DATE()";
+      ruDateCond = "DATE(ru.created_at) = CURRENT_DATE()";
+    } else if (period === 'WEEKLY') {
+      txDateCond = "YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
+      ruDateCond = "YEARWEEK(ru.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
+    } else if (period === 'MONTHLY') {
+      txDateCond = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
+      ruDateCond = "MONTH(ru.created_at) = MONTH(CURRENT_DATE()) AND YEAR(ru.created_at) = YEAR(CURRENT_DATE())";
+    }
+
+    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
 
     // Summary statistics
     const [allUsers] = await pool.query(
@@ -813,7 +839,7 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
        FROM (
          SELECT u.id, COALESCE(SUM(t.amount), 0) as score, TRUE as qualified
          FROM users u
-         LEFT JOIN transactions t ON u.id = t.user_id AND t.type = 'CREDIT'
+         LEFT JOIN transactions t ON u.id = t.user_id AND ${offerwallAndSurveyCondition} AND ${txDateCond}
          GROUP BY u.id
        ) stats`
     );
@@ -837,9 +863,9 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
     const query = `
       SELECT 
         u.id, u.user_id as public_uid, u.name, u.email, u.profile_pic, u.balance, u.created_at, u.is_banned, u.ban_reason,
-        COALESCE(SUM(CASE WHEN t.type = 'CREDIT' THEN t.amount ELSE 0 END), 0) as total_coins,
-        COUNT(DISTINCT CASE WHEN t.source = 'OFFER' THEN t.id END) as offers_count,
-        COUNT(DISTINCT ru.id) as referrals_count,
+        COALESCE(SUM(CASE WHEN ${offerwallAndSurveyCondition} AND ${txDateCond} THEN t.amount ELSE 0 END), 0) as total_coins,
+        COUNT(DISTINCT CASE WHEN t.source = 'OFFER' AND ${txDateCond} THEN t.id END) as offers_count,
+        COUNT(DISTINCT CASE WHEN ${ruDateCond} THEN ru.id END) as referrals_count,
         MAX(df.android_id) as android_id,
         MAX(df.ip_address) as ip_address,
         MAX(df.is_emulator) as is_emulator
@@ -849,7 +875,7 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
       LEFT JOIN device_fingerprints df ON u.id = df.user_id
       ${searchCond}
       GROUP BY u.id, u.user_id, u.name, u.email, u.profile_pic, u.balance, u.created_at, u.is_banned, u.ban_reason
-      ORDER BY total_coins DESC
+      ORDER BY ${type === 'REFERRAL' ? 'referrals_count DESC, total_coins DESC' : 'total_coins DESC'}
       LIMIT ? OFFSET ?
     `;
 
@@ -1243,5 +1269,70 @@ export const deleteLeaderboardAdmin = async (req, res) => {
   } catch (error) {
     console.error('Error deleting leaderboard contest:', error);
     res.status(500).json({ success: false, message: 'Failed to delete leaderboard contest.' });
+  }
+};
+
+/**
+ * POST /api/admin/leaderboard/snapshot
+ * Archives/snapshots current contest standings for past date/period tracking
+ */
+export const snapshotLeaderboardSeasonAdmin = async (req, res) => {
+  try {
+    const { leaderboard_id, season_name } = req.body;
+
+    const [lbs] = await pool.query(`SELECT * FROM leaderboards WHERE id = ?`, [leaderboard_id]);
+    if (lbs.length === 0) {
+      return res.status(404).json({ success: false, message: 'Leaderboard contest not found.' });
+    }
+
+    const lb = lbs[0];
+    const now = new Date();
+    const nameOfSeason = season_name || `${lb.name} - ${now.toISOString().slice(0, 10)}`;
+
+    const seasonId = uuidv4();
+    await pool.query(
+      `INSERT INTO leaderboard_seasons (id, leaderboard_id, season_name, start_date, end_date, total_prize_pool, total_winners, status)
+       VALUES (?, ?, ?, ?, NOW(), ?, ?, 'COMPLETED')`,
+      [seasonId, lb.id, nameOfSeason, lb.start_date || now, lb.reward_pool, lb.max_winners]
+    );
+
+    // Record Audit Log
+    const adminEmail = req.user?.email || 'admin@rewardverse.com';
+    await pool.query(
+      `INSERT INTO leaderboard_logs (id, admin_id, action, details) VALUES (?, ?, 'SEASON_SNAPSHOT', ?)`,
+      [uuidv4(), adminEmail, `Archived season snapshot for ${lb.name} (${nameOfSeason})`]
+    );
+
+    res.json({
+      success: true,
+      message: `Season snapshot archived successfully for "${lb.name}"!`,
+      season_id: seasonId
+    });
+  } catch (error) {
+    console.error('Error snapshotting leaderboard season:', error);
+    res.status(500).json({ success: false, message: 'Failed to archive season snapshot.' });
+  }
+};
+
+/**
+ * GET /api/admin/leaderboard/seasons
+ * Returns all past archived season snapshots & winner logs
+ */
+export const getLeaderboardSeasonsAdmin = async (req, res) => {
+  try {
+    const [seasons] = await pool.query(
+      `SELECT ls.*, l.name as leaderboard_name, l.type, l.period
+       FROM leaderboard_seasons ls
+       JOIN leaderboards l ON ls.leaderboard_id = l.id
+       ORDER BY ls.created_at DESC`
+    );
+
+    res.json({
+      success: true,
+      seasons
+    });
+  } catch (error) {
+    console.error('Error fetching archived leaderboard seasons:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch archived seasons.' });
   }
 };
