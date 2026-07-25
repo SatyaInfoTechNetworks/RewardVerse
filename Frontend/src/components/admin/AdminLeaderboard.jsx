@@ -226,6 +226,36 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     setLbForm({ ...lbForm, tiers: newTiers });
   };
 
+  const handleDeleteLb = async (lbToDelete) => {
+    const target = lbToDelete || editingLb;
+    if (!target || !target.id) {
+      showNotice('error', 'Select a valid leaderboard contest to delete.');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE contest "${target.name}"? This action cannot be undone!`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/api/admin/leaderboard/delete/${target.id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', data.message || 'Contest deleted successfully!');
+        if (editingLb?.id === target.id) setEditingLb(null);
+        fetchLeaderboards();
+        fetchDashboardOverview();
+      } else {
+        showNotice('error', data.message || 'Failed to delete contest.');
+      }
+    } catch (err) {
+      showNotice('error', 'Error deleting leaderboard contest.');
+    }
+  };
+
   const addTierRow = () => {
     const lastEnd = lbForm.tiers.length > 0 ? lbForm.tiers[lbForm.tiers.length - 1].end_rank : 0;
     setLbForm({
@@ -602,10 +632,17 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                           </button>
                           <button
                             onClick={() => handleDistributeRewards(lb)}
-                            className="btn btn-xs btn-success font-weight-bold"
+                            className="btn btn-xs btn-success font-weight-bold mr-1"
                             title="Pay Winners Now"
                           >
-                            <i className="fas fa-gift mr-1"></i> Pay Winners
+                            <i className="fas fa-gift mr-1"></i> Pay
+                          </button>
+                          <button
+                            onClick={() => handleDeleteLb(lb)}
+                            className="btn btn-xs btn-outline-danger font-weight-bold"
+                            title="Delete Contest"
+                          >
+                            <i className="fas fa-trash-alt mr-1"></i> Delete
                           </button>
                         </td>
                       </tr>
@@ -807,9 +844,20 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
                           Show Banner on App Home Screen
                         </label>
                       </div>
-                      <button type="submit" className="btn btn-primary font-weight-bold px-4">
-                        <i className="fas fa-save mr-1"></i> Save Contest
-                      </button>
+                      <div>
+                        <button type="submit" className="btn btn-primary font-weight-bold px-4 mr-2">
+                          <i className="fas fa-save mr-1"></i> Save Contest
+                        </button>
+                        {editingLb && editingLb.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteLb(editingLb)}
+                            className="btn btn-outline-danger font-weight-bold px-3"
+                          >
+                            <i className="fas fa-trash-alt mr-1"></i> Delete Contest
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </form>
                 </div>

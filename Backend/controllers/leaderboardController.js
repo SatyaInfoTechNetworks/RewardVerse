@@ -1251,3 +1251,36 @@ export const getAdminLogs = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch admin audit logs.' });
   }
 };
+
+/**
+ * DELETE /api/admin/leaderboard/delete/:id (or POST /api/admin/leaderboard/delete)
+ * Permanently deletes a contest leaderboard and associated tiers/entries
+ */
+export const deleteLeaderboardAdmin = async (req, res) => {
+  try {
+    const leaderboardId = req.params.id || req.body.id;
+    if (!leaderboardId) {
+      return res.status(400).json({ success: false, message: 'Leaderboard ID is required.' });
+    }
+
+    // Delete associated tiers, entries, and leaderboard
+    await pool.query(`DELETE FROM leaderboard_reward_tiers WHERE leaderboard_id = ?`, [leaderboardId]);
+    await pool.query(`DELETE FROM leaderboard_entries WHERE leaderboard_id = ?`, [leaderboardId]);
+    await pool.query(`DELETE FROM leaderboards WHERE id = ?`, [leaderboardId]);
+
+    // Log admin audit action
+    const adminEmail = req.user?.email || 'admin@rewardverse.com';
+    await pool.query(
+      `INSERT INTO leaderboard_logs (id, admin_id, action, details) VALUES (?, ?, 'DELETE_LEADERBOARD', ?)`,
+      [uuidv4(), adminEmail, `Deleted contest leaderboard ID: ${leaderboardId}`]
+    );
+
+    res.json({
+      success: true,
+      message: 'Leaderboard contest deleted successfully!'
+    });
+  } catch (error) {
+    console.error('Error deleting leaderboard contest:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete leaderboard contest.' });
+  }
+};
