@@ -39,7 +39,7 @@ Returns summary statistics for the home screen leaderboard widget card.
 ## 2. 💰 Earnings Leaderboard API
 
 Returns the ranked player standings, contest metadata, dynamic prize pool, and reward tiers for the selected earnings period.
-*Note: Referral commissions are strictly **excluded** from this score; only direct task/offer activity is counted.*
+*Note: Strictly ranks earnings from **Offerwalls & Surveys**. All non-offerwall sources are **excluded** (Daily Check-in/Streak, Spin Wheel, Lucky Draw/Giveaways, Watch Video Ads, Scratch Cards, Lifafa Rewards, and Referral Commissions).*
 
 - **Endpoint**: `GET /api/leaderboards/earnings`
 - **Query Parameters**:

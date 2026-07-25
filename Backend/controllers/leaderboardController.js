@@ -178,6 +178,8 @@ export const getHomeLeaderboardBanner = async (req, res) => {
     let userScore = 0;
     let coinsNeededForTop10 = 0;
 
+    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
+
     if (userId) {
       // User's monthly earnings rank
       const [userEntries] = await pool.query(
@@ -193,10 +195,10 @@ export const getHomeLeaderboardBanner = async (req, res) => {
         userRank = userEntries[0].rank || null;
         userScore = parseFloat(userEntries[0].score) || 0;
       } else {
-        // Calculate user non-referral earnings this month
+        // Calculate user Offerwall & Survey earnings this month
         const [userTx] = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-           WHERE user_id = ? AND type = 'CREDIT' AND (source IS NULL OR UPPER(source) != 'REFERRAL') AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
+          `SELECT COALESCE(SUM(amount), 0) as total FROM transactions t
+           WHERE user_id = ? AND ${offerwallAndSurveyCondition} AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
           [userId]
         );
         userScore = parseFloat(userTx[0]?.total) || 0;
@@ -206,8 +208,8 @@ export const getHomeLeaderboardBanner = async (req, res) => {
       const [top10th] = await pool.query(
         `SELECT score FROM (
            SELECT COALESCE(SUM(amount), 0) as score
-           FROM transactions
-           WHERE type = 'CREDIT' AND (source IS NULL OR UPPER(source) != 'REFERRAL') AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
+           FROM transactions t
+           WHERE ${offerwallAndSurveyCondition} AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
            GROUP BY user_id
            ORDER BY score DESC
            LIMIT 10
@@ -271,10 +273,10 @@ export const getEarningsLeaderboard = async (req, res) => {
       dateCondition = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
     }
 
-    // Exclude referral commission coins from Earnings Leaderboard
-    const nonReferralCondition = "t.type = 'CREDIT' AND (t.source IS NULL OR UPPER(t.source) != 'REFERRAL')";
+    // Exclude Non-Offerwall sources (Daily Streak, Spin Wheel, Lucky Draw, Referral, Ads, Lifafa)
+    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
 
-    // Fetch Top Earners based on non-referral transactions ledger
+    // Fetch Top Earners based on Offerwall & Survey transactions ledger
     const [rows] = await pool.query(
       `SELECT 
          u.id as user_id,
@@ -285,7 +287,7 @@ export const getEarningsLeaderboard = async (req, res) => {
          COUNT(DISTINCT CASE WHEN t.source = 'OFFER' THEN t.id END) as offers_completed
        FROM users u
        JOIN transactions t ON u.id = t.user_id
-       WHERE ${nonReferralCondition} AND u.is_banned = FALSE AND ${dateCondition}
+       WHERE ${offerwallAndSurveyCondition} AND u.is_banned = FALSE AND ${dateCondition}
        GROUP BY u.id
        ORDER BY CAST(score AS DECIMAL(15,2)) DESC
        LIMIT ?`,
@@ -309,7 +311,7 @@ export const getEarningsLeaderboard = async (req, res) => {
         myRankInfo = rankings[myIndex];
       } else {
         const [myScoreRes] = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t WHERE user_id = ? AND ${nonReferralCondition} AND ${dateCondition}`,
+          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t WHERE user_id = ? AND ${offerwallAndSurveyCondition} AND ${dateCondition}`,
           [userId]
         );
         const myScore = parseFloat(myScoreRes[0]?.score) || 0;
@@ -318,7 +320,7 @@ export const getEarningsLeaderboard = async (req, res) => {
         const [rankRes] = await pool.query(
           `SELECT COUNT(DISTINCT user_id) + 1 as rank FROM (
              SELECT user_id, SUM(amount) as total FROM transactions t 
-             WHERE ${nonReferralCondition} AND ${dateCondition}
+             WHERE ${offerwallAndSurveyCondition} AND ${dateCondition}
              GROUP BY user_id HAVING total > ?
            ) higher`,
           [myScore]
@@ -532,10 +534,12 @@ export const getUserLeaderboardProfile = async (req, res) => {
   try {
     const userId = req.user.id;
 
+    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
+
     // Fetch user basic profile & lifetime stats
     const [users] = await pool.query(
       `SELECT u.id, u.user_id, u.name, u.email, u.balance, u.profile_pic, u.created_at,
-              COALESCE(SUM(CASE WHEN t.type = 'CREDIT' THEN t.amount ELSE 0 END), 0) as lifetime_coins
+              COALESCE(SUM(CASE WHEN ${offerwallAndSurveyCondition} THEN t.amount ELSE 0 END), 0) as lifetime_coins
        FROM users u
        LEFT JOIN transactions t ON u.id = t.user_id
        WHERE u.id = ?
@@ -549,14 +553,14 @@ export const getUserLeaderboardProfile = async (req, res) => {
 
     const user = users[0];
 
-    // Earnings per period
+    // Earnings per period (Offerwall & Survey only)
     const [earningsRes] = await pool.query(
       `SELECT 
-         COALESCE(SUM(CASE WHEN DATE(created_at) = CURRENT_DATE() THEN amount ELSE 0 END), 0) as daily,
-         COALESCE(SUM(CASE WHEN YEARWEEK(created_at, 1) = YEARWEEK(CURRENT_DATE(), 1) THEN amount ELSE 0 END), 0) as weekly,
-         COALESCE(SUM(CASE WHEN MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE()) THEN amount ELSE 0 END), 0) as monthly
-       FROM transactions
-       WHERE user_id = ? AND type = 'CREDIT'`,
+         COALESCE(SUM(CASE WHEN DATE(t.created_at) = CURRENT_DATE() THEN t.amount ELSE 0 END), 0) as daily,
+         COALESCE(SUM(CASE WHEN YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1) THEN t.amount ELSE 0 END), 0) as weekly,
+         COALESCE(SUM(CASE WHEN MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE()) THEN t.amount ELSE 0 END), 0) as monthly
+       FROM transactions t
+       WHERE t.user_id = ? AND ${offerwallAndSurveyCondition}`,
       [userId]
     );
 
