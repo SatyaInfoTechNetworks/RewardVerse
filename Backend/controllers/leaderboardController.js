@@ -646,7 +646,7 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
     });
 
     // 4. Rewards Pending
-    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM users WHERE is_banned = FALSE AND balance > 0`);
+    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM leaderboard_rewards WHERE status = 'PENDING'`);
 
     // 5. Rewards Distributed
     const [distRes] = await pool.query(`SELECT COALESCE(SUM(reward_coins), 0) as total_coins, COUNT(*) as total_rewards FROM leaderboard_rewards`);
@@ -679,50 +679,7 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
  */
 export const listAdminLeaderboards = async (req, res) => {
   try {
-    let [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
-
-    const defaultLbs = [
-      { name: 'Daily Earnings', type: 'EARNINGS', period: 'DAILY', reward_pool: 5000, pool_growth_per_user: 5, max_pool_cap: 25000, max_winners: 20 },
-      { name: 'Weekly Earnings', type: 'EARNINGS', period: 'WEEKLY', reward_pool: 15000, pool_growth_per_user: 10, max_pool_cap: 50000, max_winners: 30 },
-      { name: 'Monthly Earnings', type: 'EARNINGS', period: 'MONTHLY', reward_pool: 42500, pool_growth_per_user: 15, max_pool_cap: 100000, max_winners: 50 },
-      { name: 'All Time Earnings', type: 'EARNINGS', period: 'ALL_TIME', reward_pool: 100000, pool_growth_per_user: 25, max_pool_cap: 250000, max_winners: 100 },
-      { name: 'Daily Referrals', type: 'REFERRAL', period: 'DAILY', reward_pool: 3000, pool_growth_per_user: 5, max_pool_cap: 15000, max_winners: 10 },
-      { name: 'Monthly Referrals', type: 'REFERRAL', period: 'MONTHLY', reward_pool: 25000, pool_growth_per_user: 15, max_pool_cap: 75000, max_winners: 25 }
-    ];
-
-    let inserted = false;
-    for (const d of defaultLbs) {
-      const exists = leaderboards.some(l => l.type === d.type && l.period === d.period);
-      if (!exists) {
-        const lbId = uuidv4();
-        await pool.query(
-          `INSERT INTO leaderboards (id, name, type, period, reward_pool, dynamic_pool_enabled, pool_growth_per_user, max_pool_cap, max_winners, show_on_home, status)
-           VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, TRUE, 'ACTIVE')`,
-          [lbId, d.name, d.type, d.period, d.reward_pool, d.pool_growth_per_user, d.max_pool_cap, d.max_winners]
-        );
-
-        const defaultTiers = [
-          { start_rank: 1, end_rank: 1, reward_coins: Math.round(d.reward_pool * 0.3) },
-          { start_rank: 2, end_rank: 2, reward_coins: Math.round(d.reward_pool * 0.2) },
-          { start_rank: 3, end_rank: 3, reward_coins: Math.round(d.reward_pool * 0.1) },
-          { start_rank: 4, end_rank: 10, reward_coins: Math.round((d.reward_pool * 0.25) / 7) },
-          { start_rank: 11, end_rank: d.max_winners, reward_coins: Math.round((d.reward_pool * 0.15) / Math.max(1, d.max_winners - 10)) }
-        ];
-
-        for (const t of defaultTiers) {
-          await pool.query(
-            `INSERT INTO leaderboard_reward_tiers (id, leaderboard_id, start_rank, end_rank, reward_coins)
-             VALUES (?, ?, ?, ?, ?)`,
-            [uuidv4(), lbId, t.start_rank, t.end_rank, t.reward_coins]
-          );
-        }
-        inserted = true;
-      }
-    }
-
-    if (inserted) {
-      [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
-    }
+    const [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
 
     // Fetch tiers for each leaderboard
     for (const lb of leaderboards) {
@@ -732,6 +689,16 @@ export const listAdminLeaderboards = async (req, res) => {
       );
       lb.tiers = tiers;
     }
+
+    res.json({
+      success: true,
+      leaderboards
+    });
+  } catch (error) {
+    console.error('Error listing admin leaderboards:', error);
+    res.status(500).json({ success: false, message: 'Failed to list leaderboards.' });
+  }
+};
 
     res.json({
       success: true,
