@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
 export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
-  const [subTab, setSubTab] = useState('overview'); // overview, settings, tier_builder, participants, anti_cheat, coin_stats, distribution, announcement, logs
+  const [subTab, setSubTab] = useState('overview'); // overview, builder, players, security, payouts
 
-  // Overview stats state (Purged all fake numbers - 100% realtime from DB)
+  // Dashboard KPI Overview state
   const [dashStats, setDashStats] = useState({
-    active_leaderboards: 0,
+    active_leaderboards: 6,
     participants: 0,
     prize_pool_coins: 0,
     rewards_pending: 0,
@@ -14,29 +14,36 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     current_season: new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })
   });
 
-  // Leaderboards Config state
+  // All Configured Contests state
   const [leaderboardsList, setLeaderboardsList] = useState([]);
   const [editingLb, setEditingLb] = useState(null);
   const [lbForm, setLbForm] = useState({
+    id: '',
     name: 'Daily Earnings',
     type: 'EARNINGS', // EARNINGS or REFERRAL
     period: 'DAILY', // DAILY, WEEKLY, MONTHLY, ALL_TIME
     minimum_score: 0,
     minimum_referrals: 0,
-    reward_pool: 0,
+    reward_pool: 5000,
     dynamic_pool_enabled: true,
-    pool_growth_per_user: 10,
-    max_pool_cap: 100000,
+    pool_growth_per_user: 5,
+    max_pool_cap: 25000,
     max_winners: 20,
     start_date: '',
     end_date: '',
     auto_reward: false,
     show_on_home: true,
     status: 'ACTIVE',
-    tiers: []
+    tiers: [
+      { start_rank: 1, end_rank: 1, reward_coins: 1500 },
+      { start_rank: 2, end_rank: 2, reward_coins: 1000 },
+      { start_rank: 3, end_rank: 3, reward_coins: 500 },
+      { start_rank: 4, end_rank: 10, reward_coins: 200 },
+      { start_rank: 11, end_rank: 20, reward_coins: 60 }
+    ]
   });
 
-  // Participant stats & player table state (Purged all fake numbers)
+  // Participant stats & players list state
   const [participantStats, setParticipantStats] = useState({
     qualified_users: 0,
     not_qualified: 0,
@@ -54,7 +61,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
 
-  // Anti-cheat state (Purged all fake numbers)
+  // Anti-cheat state
   const [antiCheatData, setAntiCheatData] = useState({
     anti_cheat_summary: {
       duplicate_device_flags: 0,
@@ -62,24 +69,14 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       rapid_offer_spam_flags: 0,
       vpn_proxy_flags: 0,
       click_farm_detection_flags: 0
-    }
-  });
-
-  // Coin Statistics state (Purged all fake numbers)
-  const [coinStats, setCoinStats] = useState({
-    coins_earned_today: 0,
-    coins_distributed: 0,
-    leaderboard_rewards: 0,
-    offer_rewards: 0,
-    referral_rewards: 0,
-    watch_ad_rewards: 0,
-    current_coin_supply: 0
+    },
+    duplicate_devices: []
   });
 
   // Announcement & FCM Push state
   const [announcementForm, setAnnouncementForm] = useState({
-    title: '🏆 April Leaderboard is LIVE!',
-    message: 'Top 50 users win FREE Coins. Ends in 18 Days.',
+    title: '🏆 Season Leaderboard is LIVE!',
+    message: 'Top players win FREE Coins. Keep earning daily!',
     ends_at: '',
     is_active: true
   });
@@ -97,13 +94,11 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
   const refreshAllData = () => {
     fetchDashboardOverview();
     fetchLeaderboards();
-    if (subTab === 'participants') fetchParticipants();
-    if (subTab === 'anti_cheat') fetchAntiCheat();
-    if (subTab === 'coin_stats') fetchCoinStats();
-    if (subTab === 'logs') fetchLogs();
+    if (subTab === 'players') fetchParticipants();
+    if (subTab === 'security') fetchAntiCheat();
+    if (subTab === 'payouts') fetchLogs();
   };
 
-  // Auto-refresh real-time data every 15 seconds
   useEffect(() => {
     refreshAllData();
     const interval = setInterval(refreshAllData, 15000);
@@ -131,20 +126,20 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       minimum_referrals: parseInt(lb.minimum_referrals) || 0,
       reward_pool: parseFloat(lb.reward_pool) || 0,
       dynamic_pool_enabled: lb.dynamic_pool_enabled ? true : false,
-      pool_growth_per_user: parseFloat(lb.pool_growth_per_user) || 10,
-      max_pool_cap: parseFloat(lb.max_pool_cap) || 100000,
+      pool_growth_per_user: parseFloat(lb.pool_growth_per_user) || 5,
+      max_pool_cap: parseFloat(lb.max_pool_cap) || 25000,
       max_winners: parseInt(lb.max_winners) || 20,
-      start_date: lb.start_date || '',
-      end_date: lb.end_date || '',
+      start_date: lb.start_date ? new Date(lb.start_date).toISOString().slice(0, 16) : '',
+      end_date: lb.end_date ? new Date(lb.end_date).toISOString().slice(0, 16) : '',
       auto_reward: lb.auto_reward ? true : false,
       show_on_home: lb.show_on_home ? true : false,
       status: lb.status || 'ACTIVE',
       tiers: Array.isArray(lb.tiers) && lb.tiers.length > 0 ? lb.tiers : [
-        { start_rank: 1, end_rank: 1, reward_coins: 5000 },
-        { start_rank: 2, end_rank: 2, reward_coins: 3000 },
-        { start_rank: 3, end_rank: 3, reward_coins: 2000 },
-        { start_rank: 4, end_rank: 10, reward_coins: 750 },
-        { start_rank: 11, end_rank: 25, reward_coins: 300 }
+        { start_rank: 1, end_rank: 1, reward_coins: Math.round((lb.reward_pool || 5000) * 0.3) },
+        { start_rank: 2, end_rank: 2, reward_coins: Math.round((lb.reward_pool || 5000) * 0.2) },
+        { start_rank: 3, end_rank: 3, reward_coins: Math.round((lb.reward_pool || 5000) * 0.1) },
+        { start_rank: 4, end_rank: 10, reward_coins: Math.round(((lb.reward_pool || 5000) * 0.25) / 7) },
+        { start_rank: 11, end_rank: lb.max_winners || 20, reward_coins: Math.round(((lb.reward_pool || 5000) * 0.15) / 10) }
       ]
     });
   };
@@ -194,49 +189,18 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     }
   };
 
-  const fetchCoinStats = async () => {
-    try {
-      const res = await fetch(`${apiBase}/api/admin/leaderboard/coin-stats`, { headers: getHeaders() });
-      const data = await res.json();
-      if (data.success && data.coin_stats) setCoinStats(data.coin_stats);
-    } catch (err) {
-      console.error('Error fetching coin stats:', err);
-    }
-  };
-
   const fetchLogs = async () => {
     try {
       const res = await fetch(`${apiBase}/api/admin/leaderboard/logs`, { headers: getHeaders() });
       const data = await res.json();
-      if (data.success) setLogsList(data.logs || []);
+      if (data.success && data.logs) setLogsList(data.logs);
     } catch (err) {
       console.error('Error fetching logs:', err);
     }
   };
 
-  // Tier Builder handlers
-  const addTierRow = () => {
-    const lastTier = lbForm.tiers[lbForm.tiers.length - 1];
-    const nextStart = lastTier ? lastTier.end_rank + 1 : 1;
-    setLbForm({
-      ...lbForm,
-      tiers: [...lbForm.tiers, { start_rank: nextStart, end_rank: nextStart + 5, reward_coins: 100 }]
-    });
-  };
-
-  const removeTierRow = (index) => {
-    const updated = lbForm.tiers.filter((_, i) => i !== index);
-    setLbForm({ ...lbForm, tiers: updated });
-  };
-
-  const handleTierChange = (index, field, value) => {
-    const updated = [...lbForm.tiers];
-    updated[index][field] = parseFloat(value) || 0;
-    setLbForm({ ...lbForm, tiers: updated });
-  };
-
-  const handleSaveLeaderboard = async (e) => {
-    e.preventDefault();
+  const handleSaveLbConfig = async (e) => {
+    if (e) e.preventDefault();
     try {
       const res = await fetch(`${apiBase}/api/admin/leaderboard/save`, {
         method: 'POST',
@@ -245,20 +209,40 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       });
       const data = await res.json();
       if (data.success) {
-        showNotice('success', data.message || 'Leaderboard configuration saved successfully!');
+        showNotice('success', 'Leaderboard configuration & reward tiers saved successfully!');
         fetchLeaderboards();
         fetchDashboardOverview();
-        setSubTab('overview');
       } else {
-        showNotice('error', data.message);
+        showNotice('error', data.message || 'Failed to save config.');
       }
     } catch (err) {
-      showNotice('error', 'Failed to save leaderboard settings.');
+      showNotice('error', 'Network error saving leaderboard config.');
     }
   };
 
-  const handleScoreAdjustSubmit = async (e) => {
-    e.preventDefault();
+  const handleTierChange = (index, field, value) => {
+    const newTiers = [...lbForm.tiers];
+    newTiers[index] = { ...newTiers[index], [field]: parseFloat(value) || 0 };
+    setLbForm({ ...lbForm, tiers: newTiers });
+  };
+
+  const addTierRow = () => {
+    const lastEnd = lbForm.tiers.length > 0 ? lbForm.tiers[lbForm.tiers.length - 1].end_rank : 0;
+    setLbForm({
+      ...lbForm,
+      tiers: [
+        ...lbForm.tiers,
+        { start_rank: lastEnd + 1, end_rank: lastEnd + 5, reward_coins: 100 }
+      ]
+    });
+  };
+
+  const removeTierRow = (index) => {
+    const newTiers = lbForm.tiers.filter((_, idx) => idx !== index);
+    setLbForm({ ...lbForm, tiers: newTiers });
+  };
+
+  const handleAdjustPlayerScore = async () => {
     if (!selectedPlayer) return;
     try {
       const res = await fetch(`${apiBase}/api/admin/leaderboard/adjust-score`, {
@@ -266,17 +250,16 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
         headers: getHeaders(),
         body: JSON.stringify({
           user_id: selectedPlayer.id,
+          leaderboard_id: editingLb?.id || 'main',
           action: adjustAction,
-          amount: adjustAmount,
+          amount: parseFloat(adjustAmount) || 0,
           reason: adjustReason
         })
       });
       const data = await res.json();
       if (data.success) {
-        showNotice('success', data.message || 'Player adjustment executed successfully.');
+        showNotice('success', data.message || 'Player score updated!');
         setAdjustModal(false);
-        setAdjustAmount('');
-        setAdjustReason('');
         fetchParticipants();
       } else {
         showNotice('error', data.message);
@@ -295,40 +278,34 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
         body: JSON.stringify(announcementForm)
       });
       const data = await res.json();
-      if (data.success) {
-        showNotice('success', 'Announcement banner updated live!');
-      } else {
-        showNotice('error', data.message);
-      }
+      if (data.success) showNotice('success', 'Leaderboard announcement updated!');
+      else showNotice('error', data.message);
     } catch (err) {
-      showNotice('error', 'Failed to update announcement banner.');
+      showNotice('error', 'Failed to update announcement.');
     }
   };
 
   const handleSendFcmPush = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${apiBase}/api/admin/leaderboard/notify`, {
+      const res = await fetch(`${apiBase}/api/admin/leaderboard/send-fcm`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(fcmForm)
       });
       const data = await res.json();
-      if (data.success) {
-        showNotice('success', data.message || 'FCM Push Notification sent successfully!');
-      } else {
-        showNotice('error', data.message);
-      }
+      if (data.success) showNotice('success', data.message || 'FCM Push Notification sent!');
+      else showNotice('error', data.message);
     } catch (err) {
       showNotice('error', 'Failed to send FCM Push Notification.');
     }
   };
 
-  const handleDistributeRewards = async () => {
-    if (!window.confirm('Are you sure you want to approve & distribute leaderboard rewards to the top qualified winners? This will immediately credit user balances!')) return;
+  const handleDistributeRewards = async (targetLb) => {
+    const lbToDistribute = targetLb || editingLb;
+    if (!window.confirm(`Are you sure you want to approve & distribute rewards for "${lbToDistribute?.name || 'Selected Contest'}"? This will immediately credit user balances & dispatch FCM notifications!`)) return;
     try {
-      // Build top 20 winners from playersList
-      const winners = playersList.slice(0, 20).map((player, idx) => ({
+      const winners = playersList.slice(0, lbToDistribute?.max_winners || 20).map((player, idx) => ({
         user_id: player.id,
         rank: idx + 1,
         reward_coins: idx === 0 ? 5000 : (idx === 1 ? 3000 : (idx === 2 ? 2000 : 500))
@@ -337,7 +314,7 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
       const res = await fetch(`${apiBase}/api/admin/leaderboard/distribute`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ leaderboard_id: editingLb?.id || 'main', winners })
+        body: JSON.stringify({ leaderboard_id: lbToDistribute?.id, winners })
       });
       const data = await res.json();
       if (data.success) {
@@ -351,685 +328,284 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
     }
   };
 
+  // Total allocated coins calculator across tiers
+  const totalAllocatedCoins = lbForm.tiers.reduce((sum, t) => {
+    const numWinners = Math.max(1, (t.end_rank - t.start_rank) + 1);
+    return sum + (t.reward_coins * numWinners);
+  }, 0);
+
   return (
-    <div className="container-fluid">
-      {/* Top Header & Dynamic Navigation */}
-      <div className="card shadow-sm border-0 mb-4 rounded-lg">
-        <div className="card-body p-3">
+    <div className="container-fluid py-2">
+      {/* EXECUTIVE HEADER BANNER */}
+      <div className="card border-0 shadow-lg mb-4 rounded-xl text-white" style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}>
+        <div className="card-body p-4">
           <div className="d-flex flex-wrap align-items-center justify-content-between">
-            <div>
-              <h4 className="font-weight-bold text-dark mb-0">
-                <i className="fas fa-trophy text-warning mr-2"></i>Leaderboard Master Control
-              </h4>
-              <p className="text-muted text-xs mb-0">Manage Dynamic Prize Pools, Tier Builders, Anti-Cheat & Distribution</p>
+            <div className="mb-2 mb-md-0">
+              <div className="d-flex align-items-center">
+                <div className="bg-warning text-dark rounded-circle p-3 mr-3 shadow">
+                  <i className="fas fa-trophy fa-2x"></i>
+                </div>
+                <div>
+                  <h3 className="font-weight-bold mb-1 text-white">Leaderboard Master Control</h3>
+                  <p className="text-slate-300 text-sm mb-0">
+                    Manage Dynamic Prize Pools, Tier Builders, Anti-Cheat & FCM Winner Distributions
+                  </p>
+                </div>
+              </div>
             </div>
             
-            {/* Dynamic Prize Pool Live Ticker Badge & Refresh Button */}
-            <div className="d-flex align-items-center">
-              <button onClick={refreshAllData} className="btn btn-sm btn-outline-primary font-weight-bold mr-2">
-                <i className="fas fa-sync-alt mr-1"></i> Live Realtime Sync
+            <div className="d-flex flex-wrap align-items-center">
+              <button onClick={refreshAllData} className="btn btn-outline-light btn-sm font-weight-bold mr-2 mb-2 mb-md-0 shadow-sm">
+                <i className="fas fa-sync-alt mr-1"></i> Sync Realtime
               </button>
-              <div className="bg-gradient-warning text-dark px-3 py-2 rounded-lg shadow-sm font-weight-bold text-sm">
-                <i className="fas fa-coins mr-1"></i> Live Prize Pool: <strong>{dashStats.prize_pool_coins?.toLocaleString()} Coins</strong>
-                <span className="badge badge-dark ml-2">Growing Dynamic</span>
+              <button
+                onClick={() => {
+                  setEditingLb(null);
+                  setLbForm({
+                    id: '',
+                    name: 'New Custom Contest',
+                    type: 'EARNINGS',
+                    period: 'DAILY',
+                    minimum_score: 100,
+                    minimum_referrals: 0,
+                    reward_pool: 5000,
+                    dynamic_pool_enabled: true,
+                    pool_growth_per_user: 5,
+                    max_pool_cap: 25000,
+                    max_winners: 20,
+                    start_date: '',
+                    end_date: '',
+                    auto_reward: false,
+                    show_on_home: true,
+                    status: 'ACTIVE',
+                    tiers: [
+                      { start_rank: 1, end_rank: 1, reward_coins: 1500 },
+                      { start_rank: 2, end_rank: 2, reward_coins: 1000 },
+                      { start_rank: 3, end_rank: 3, reward_coins: 500 }
+                    ]
+                  });
+                  setSubTab('builder');
+                }}
+                className="btn btn-warning btn-sm text-dark font-weight-bold mr-2 mb-2 mb-md-0 shadow"
+              >
+                <i className="fas fa-plus-circle mr-1"></i> + Create Custom Contest
+              </button>
+              <div className="bg-dark border border-warning text-warning px-3 py-2 rounded-lg shadow-sm font-weight-bold text-sm">
+                <i className="fas fa-coins mr-1"></i> Total Pool: <strong>{dashStats.prize_pool_coins?.toLocaleString()} Coins</strong>
               </div>
             </div>
           </div>
 
-          <hr className="my-3" />
+          <hr className="border-secondary my-3" />
 
-          {/* Subtabs Menu */}
-          <ul className="nav nav-pills card-header-pills text-sm font-weight-bold">
-            <li className="nav-item">
-              <button onClick={() => setSubTab('overview')} className={`nav-link border-0 ${subTab === 'overview' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-chart-pie mr-1"></i> Dashboard Overview
+          {/* MAIN 5-TAB NAVIGATION SYSTEM */}
+          <ul className="nav nav-pills card-header-pills font-weight-bold">
+            <li className="nav-item mr-2 mb-2">
+              <button
+                onClick={() => setSubTab('overview')}
+                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'overview' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+              >
+                <i className="fas fa-chart-pie mr-2"></i> 📊 Contests Overview ({leaderboardsList.length})
               </button>
             </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('settings')} className={`nav-link border-0 ${subTab === 'settings' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-cog mr-1"></i> Leaderboard Settings
+            <li className="nav-item mr-2 mb-2">
+              <button
+                onClick={() => setSubTab('builder')}
+                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'builder' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+              >
+                <i className="fas fa-layer-group mr-2"></i> 🏆 Contest & Tier Builder
               </button>
             </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('tier_builder')} className={`nav-link border-0 ${subTab === 'tier_builder' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-layer-group mr-1"></i> Reward Tier Builder
+            <li className="nav-item mr-2 mb-2">
+              <button
+                onClick={() => setSubTab('players')}
+                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'players' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+              >
+                <i className="fas fa-users mr-2"></i> 👥 Players & Moderation
               </button>
             </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('participants')} className={`nav-link border-0 ${subTab === 'participants' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-users mr-1"></i> Participants & Players
+            <li className="nav-item mr-2 mb-2">
+              <button
+                onClick={() => setSubTab('security')}
+                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'security' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+              >
+                <i className="fas fa-user-shield mr-2"></i> 🛡️ Anti-Cheat Panel
               </button>
             </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('anti_cheat')} className={`nav-link border-0 ${subTab === 'anti_cheat' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-user-shield mr-1"></i> Anti-Cheat Panel
-              </button>
-            </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('coin_stats')} className={`nav-link border-0 ${subTab === 'coin_stats' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-coins mr-1"></i> Coin Statistics
-              </button>
-            </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('distribution')} className={`nav-link border-0 ${subTab === 'distribution' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-gift mr-1"></i> Reward Distribution
-              </button>
-            </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('announcement')} className={`nav-link border-0 ${subTab === 'announcement' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-bullhorn mr-1"></i> Announcement Panel
-              </button>
-            </li>
-            <li className="nav-item">
-              <button onClick={() => setSubTab('logs')} className={`nav-link border-0 ${subTab === 'logs' ? 'active bg-primary' : 'text-dark'}`}>
-                <i className="fas fa-history mr-1"></i> Audit Logs
+            <li className="nav-item mr-2 mb-2">
+              <button
+                onClick={() => setSubTab('payouts')}
+                className={`nav-link px-3 py-2 rounded-lg border-0 ${subTab === 'payouts' ? 'active bg-primary text-white shadow' : 'bg-slate-800 text-light'}`}
+              >
+                <i className="fas fa-gift mr-2"></i> 💰 Payouts, FCM & Audit
               </button>
             </li>
           </ul>
         </div>
       </div>
 
-      {/* SUBTAB 1: DASHBOARD OVERVIEW */}
+      {/* TAB 1: CONTESTS OVERVIEW */}
       {subTab === 'overview' && (
         <div>
-          {/* 6 Overview KPI Cards */}
-          <div className="row">
-            <div className="col-lg-2 col-6">
-              <div className="small-box bg-info elevation-2 rounded-lg">
-                <div className="inner p-3">
-                  <h3>{dashStats.active_leaderboards}</h3>
-                  <p className="text-sm font-weight-bold mb-0">Active Leaderboards</p>
+          {/* 5 KPI SUMMARY CARDS */}
+          <div className="row mb-4">
+            <div className="col-lg-2 col-md-4 col-6 mb-3">
+              <div className="card border-0 shadow-sm rounded-lg bg-primary text-white h-100">
+                <div className="card-body p-3">
+                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Active Contests</span>
+                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.active_leaderboards}</h3>
                 </div>
-                <div className="icon"><i className="fas fa-list-ol"></i></div>
               </div>
             </div>
-            <div className="col-lg-2 col-6">
-              <div className="small-box bg-success elevation-2 rounded-lg">
-                <div className="inner p-3">
-                  <h3>{dashStats.participants?.toLocaleString()}</h3>
-                  <p className="text-sm font-weight-bold mb-0">Participants</p>
+            <div className="col-lg-2 col-md-4 col-6 mb-3">
+              <div className="card border-0 shadow-sm rounded-lg bg-success text-white h-100">
+                <div className="card-body p-3">
+                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Total Participants</span>
+                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.participants?.toLocaleString()}</h3>
                 </div>
-                <div className="icon"><i className="fas fa-user-friends"></i></div>
               </div>
             </div>
-            <div className="col-lg-3 col-6">
-              <div className="small-box bg-warning elevation-2 rounded-lg">
-                <div className="inner p-3 text-dark">
-                  <h3>{dashStats.prize_pool_coins?.toLocaleString()}</h3>
-                  <p className="text-sm font-weight-bold mb-0">Prize Pool (Coins)</p>
+            <div className="col-lg-3 col-md-4 col-6 mb-3">
+              <div className="card border-0 shadow-sm rounded-lg bg-warning text-dark h-100">
+                <div className="card-body p-3">
+                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Dynamic Prize Pool</span>
+                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.prize_pool_coins?.toLocaleString()} Coins</h3>
                 </div>
-                <div className="icon"><i className="fas fa-coins"></i></div>
               </div>
             </div>
-            <div className="col-lg-2 col-6">
-              <div className="small-box bg-danger elevation-2 rounded-lg">
-                <div className="inner p-3">
-                  <h3>{dashStats.rewards_pending}</h3>
-                  <p className="text-sm font-weight-bold mb-0">Rewards Pending</p>
+            <div className="col-lg-2 col-md-6 col-6 mb-3">
+              <div className="card border-0 shadow-sm rounded-lg bg-danger text-white h-100">
+                <div className="card-body p-3">
+                  <span className="text-xs font-weight-bold text-uppercase opacity-75">Rewards Pending</span>
+                  <h3 className="font-weight-bold mb-0 mt-1">{dashStats.rewards_pending}</h3>
                 </div>
-                <div className="icon"><i className="fas fa-hourglass-half"></i></div>
               </div>
             </div>
-            <div className="col-lg-3 col-12">
-              <div className="small-box bg-secondary elevation-2 rounded-lg">
-                <div className="inner p-3">
-                  <h3>{dashStats.rewards_distributed?.toLocaleString()}</h3>
-                  <p className="text-sm font-weight-bold mb-0">Rewards Distributed</p>
+            <div className="col-lg-3 col-md-6 col-12 mb-3">
+              <div className="card border-0 shadow-sm rounded-lg bg-dark text-white h-100">
+                <div className="card-body p-3">
+                  <span className="text-xs font-weight-bold text-uppercase text-warning">Rewards Distributed</span>
+                  <h3 className="font-weight-bold mb-0 mt-1 text-warning">{dashStats.rewards_distributed?.toLocaleString()} Winners</h3>
                 </div>
-                <div className="icon"><i className="fas fa-check-circle"></i></div>
               </div>
             </div>
           </div>
 
-          {/* Active Season Info & Quick Leaderboard Overview */}
-          <div className="card shadow-sm border-0 rounded-lg">
-            <div className="card-header bg-white font-weight-bold">
-              <i className="fas fa-calendar-alt text-primary mr-2"></i>Current Season: <span className="text-success">{dashStats.current_season}</span>
+          {/* ALL CONTESTS GRID TABLE */}
+          <div className="card border-0 shadow-sm rounded-lg">
+            <div className="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center">
+              <div>
+                <h5 className="font-weight-bold text-dark mb-0">
+                  <i className="fas fa-list text-primary mr-2"></i>Configured System Contests & Leaderboards
+                </h5>
+                <span className="text-muted text-xs">Active Season: <strong className="text-success">{dashStats.current_season}</strong></span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingLb(null);
+                  setLbForm({
+                    id: '',
+                    name: 'New Custom Contest',
+                    type: 'EARNINGS',
+                    period: 'DAILY',
+                    minimum_score: 100,
+                    minimum_referrals: 0,
+                    reward_pool: 5000,
+                    dynamic_pool_enabled: true,
+                    pool_growth_per_user: 5,
+                    max_pool_cap: 25000,
+                    max_winners: 20,
+                    start_date: '',
+                    end_date: '',
+                    auto_reward: false,
+                    show_on_home: true,
+                    status: 'ACTIVE',
+                    tiers: [
+                      { start_rank: 1, end_rank: 1, reward_coins: 1500 },
+                      { start_rank: 2, end_rank: 2, reward_coins: 1000 },
+                      { start_rank: 3, end_rank: 3, reward_coins: 500 }
+                    ]
+                  });
+                  setSubTab('builder');
+                }}
+                className="btn btn-sm btn-primary font-weight-bold"
+              >
+                <i className="fas fa-plus mr-1"></i> Add Custom Contest
+              </button>
             </div>
-            <div className="card-body">
-              <h5 className="font-weight-bold text-dark mb-3">Configured Leaderboards Overview</h5>
+            <div className="card-body p-0">
               <div className="table-responsive">
-                <table className="table table-hover table-striped align-middle">
-                  <thead className="thead-light text-xs uppercase">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="bg-light text-xs font-weight-bold uppercase text-muted">
                     <tr>
-                      <th>Leaderboard Name</th>
+                      <th className="py-3 px-4">Contest Name</th>
                       <th>Type</th>
                       <th>Period</th>
                       <th>Base Pool</th>
                       <th>Dynamic Growth</th>
                       <th>Max Winners</th>
-                      <th>Home Display</th>
+                      <th>Home Banner</th>
                       <th>Status</th>
-                      <th>Action</th>
+                      <th className="text-right px-4">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {leaderboardsList.length > 0 ? (
-                      leaderboardsList.map((lb) => (
-                        <tr key={lb.id}>
-                          <td className="font-weight-bold">{lb.name}</td>
-                          <td><span className={`badge ${lb.type === 'EARNINGS' ? 'badge-success' : 'badge-info'}`}>{lb.type}</span></td>
-                          <td><span className="badge badge-light border">{lb.period}</span></td>
-                          <td className="font-weight-bold text-warning">{parseFloat(lb.reward_pool).toLocaleString()} Coins</td>
-                          <td>
-                            {lb.dynamic_pool_enabled ? (
-                              <span className="text-success text-xs font-weight-bold">+ {lb.pool_growth_per_user} coins/user (Max: {lb.max_pool_cap})</span>
-                            ) : (
-                              <span className="text-muted text-xs">Fixed Pool</span>
-                            )}
-                          </td>
-                          <td>Top {lb.max_winners}</td>
-                          <td>{lb.show_on_home ? <i className="fas fa-check-circle text-success"></i> : <i className="fas fa-times-circle text-muted"></i>}</td>
-                          <td><span className={`badge ${lb.status === 'ACTIVE' ? 'badge-success' : 'badge-secondary'}`}>{lb.status}</span></td>
-                          <td>
-                            <button
-                              onClick={() => {
-                                selectLeaderboardForEdit(lb);
-                                setSubTab('settings');
-                              }}
-                              className="btn btn-xs btn-outline-primary mr-1"
-                            >
-                              <i className="fas fa-cog"></i> Settings
-                            </button>
-                            <button
-                              onClick={() => {
-                                selectLeaderboardForEdit(lb);
-                                setSubTab('tier_builder');
-                              }}
-                              className="btn btn-xs btn-primary font-weight-bold"
-                            >
-                              <i className="fas fa-layer-group"></i> Edit Tiers
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="9" className="text-center py-4 text-muted">
-                          <i className="fas fa-info-circle mr-1"></i> Active default system leaderboards loaded. Configure custom parameters in Settings tab.
+                    {leaderboardsList.map((lb) => (
+                      <tr key={lb.id}>
+                        <td className="py-3 px-4 font-weight-bold text-dark">
+                          <i className={`fas ${lb.type === 'EARNINGS' ? 'fa-coins text-warning' : 'fa-users text-info'} mr-2`}></i>
+                          {lb.name}
                         </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 2: LEADERBOARD SETTINGS */}
-      {subTab === 'settings' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white d-flex justify-content-between align-items-center">
-            <div className="font-weight-bold">
-              <i className="fas fa-sliders-h text-primary mr-2"></i>Configure Leaderboard Parameters
-            </div>
-            <button
-              onClick={() => {
-                setEditingLb(null);
-                setLbForm({
-                  id: '',
-                  name: 'New Custom Leaderboard',
-                  type: 'EARNINGS',
-                  period: 'DAILY',
-                  minimum_score: 100,
-                  minimum_referrals: 0,
-                  reward_pool: 5000,
-                  dynamic_pool_enabled: true,
-                  pool_growth_per_user: 10,
-                  max_pool_cap: 50000,
-                  max_winners: 20,
-                  start_date: '',
-                  end_date: '',
-                  auto_reward: false,
-                  show_on_home: true,
-                  status: 'ACTIVE',
-                  tiers: [
-                    { start_rank: 1, end_rank: 1, reward_coins: 2000 },
-                    { start_rank: 2, end_rank: 2, reward_coins: 1000 },
-                    { start_rank: 3, end_rank: 5, reward_coins: 500 }
-                  ]
-                });
-              }}
-              className="btn btn-sm btn-outline-success font-weight-bold"
-            >
-              <i className="fas fa-plus mr-1"></i> Create New Leaderboard
-            </button>
-          </div>
-          <div className="card-body">
-            {/* Target Leaderboard Selection Bar */}
-            <div className="bg-light border rounded-lg p-3 mb-4 d-flex flex-wrap align-items-center justify-content-between">
-              <div className="d-flex align-items-center mb-2 mb-md-0">
-                <label className="text-xs uppercase font-weight-bold mr-3 mb-0 text-dark">
-                  <i className="fas fa-list-ul text-primary mr-1"></i> Select Leaderboard to Edit:
-                </label>
-                <select
-                  className="form-control form-control-sm font-weight-bold text-dark border-primary"
-                  style={{ width: '280px', height: '38px', borderRadius: '6px' }}
-                  value={lbForm.id || ''}
-                  onChange={(e) => {
-                    const found = leaderboardsList.find(l => l.id === e.target.value);
-                    if (found) selectLeaderboardForEdit(found);
-                  }}
-                >
-                  {leaderboardsList.map((lb) => (
-                    <option key={lb.id} value={lb.id}>
-                      {lb.name} ({lb.type} - {lb.period})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="d-flex align-items-center">
-                <span className="badge badge-primary px-3 py-2 font-weight-bold mr-2 text-sm">
-                  <i className="fas fa-crown mr-1"></i> {lbForm.name || 'Editing Leaderboard'}
-                </span>
-                <span className={`badge ${lbForm.type === 'EARNINGS' ? 'badge-success' : 'badge-info'} px-3 py-2 font-weight-bold mr-2 text-sm`}>
-                  {lbForm.type}
-                </span>
-                <span className="badge badge-dark px-3 py-2 font-weight-bold text-sm">
-                  {lbForm.period}
-                </span>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveLeaderboard}>
-              <div className="row">
-                <div className="col-md-6 form-group">
-                  <label className="text-xs uppercase font-weight-bold">Leaderboard Name</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="e.g. Daily Earnings Leaderboard"
-                    value={lbForm.name}
-                    onChange={(e) => setLbForm({ ...lbForm, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="col-md-3 form-group">
-                  <label className="text-xs uppercase font-weight-bold">Leaderboard Type</label>
-                  <select className="form-control" value={lbForm.type} onChange={(e) => setLbForm({ ...lbForm, type: e.target.value })}>
-                    <option value="EARNINGS">💰 Earnings Leaderboard</option>
-                    <option value="REFERRAL">👥 Referral Leaderboard</option>
-                  </select>
-                </div>
-                <div className="col-md-3 form-group">
-                  <label className="text-xs uppercase font-weight-bold">Period</label>
-                  <select className="form-control" value={lbForm.period} onChange={(e) => setLbForm({ ...lbForm, period: e.target.value })}>
-                    <option value="DAILY">Daily</option>
-                    <option value="WEEKLY">Weekly</option>
-                    <option value="MONTHLY">Monthly</option>
-                    <option value="ALL_TIME">All Time</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="row">
-                <div className="col-md-3 form-group">
-                  <label className="text-xs uppercase font-weight-bold">Minimum Coins Required</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={lbForm.minimum_score}
-                    onChange={(e) => setLbForm({ ...lbForm, minimum_score: parseFloat(e.target.value) })}
-                  />
-                </div>
-                {lbForm.type === 'REFERRAL' && (
-                  <div className="col-md-3 form-group">
-                    <label className="text-xs uppercase font-weight-bold">Minimum Successful Referrals</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={lbForm.minimum_referrals}
-                      onChange={(e) => setLbForm({ ...lbForm, minimum_referrals: parseInt(e.target.value) })}
-                    />
-                  </div>
-                )}
-                <div className="col-md-3 form-group">
-                  <label className="text-xs uppercase font-weight-bold">Base Reward Pool (Coins)</label>
-                  <input
-                    type="number"
-                    className="form-control font-weight-bold text-warning"
-                    value={lbForm.reward_pool}
-                    onChange={(e) => setLbForm({ ...lbForm, reward_pool: parseFloat(e.target.value) })}
-                  />
-                </div>
-                <div className="col-md-3 form-group">
-                  <label className="text-xs uppercase font-weight-bold">Maximum Winners</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={lbForm.max_winners}
-                    onChange={(e) => setLbForm({ ...lbForm, max_winners: parseInt(e.target.value) })}
-                  />
-                </div>
-              </div>
-
-              {/* Contest Duration: Start Date & Time & End Date & Time */}
-              <div className="card bg-white border p-3 my-3 rounded-lg shadow-sm">
-                <h6 className="font-weight-bold text-primary mb-2">
-                  <i className="fas fa-clock mr-1"></i> Contest Schedule & Coin Crediting Rules
-                </h6>
-                <p className="text-xs text-muted mb-3">
-                  Specify when this leaderboard contest starts and ends. At the end of the contest duration, coin rewards are distributed to winners either automatically (if auto-reward is toggled ON) or manually via the Reward Distribution tab.
-                </p>
-                <div className="row">
-                  <div className="col-md-6 form-group">
-                    <label className="text-xs uppercase font-weight-bold">Contest Start Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      className="form-control font-weight-bold text-dark"
-                      value={lbForm.start_date ? lbForm.start_date.substring(0, 16) : ''}
-                      onChange={(e) => setLbForm({ ...lbForm, start_date: e.target.value })}
-                    />
-                  </div>
-                  <div className="col-md-6 form-group">
-                    <label className="text-xs uppercase font-weight-bold">Contest End Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      className="form-control font-weight-bold text-danger"
-                      value={lbForm.end_date ? lbForm.end_date.substring(0, 16) : ''}
-                      onChange={(e) => setLbForm({ ...lbForm, end_date: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Dynamic Growing Prize Pool Configuration */}
-              <div className="card bg-light border p-3 my-3 rounded-lg">
-                <h6 className="font-weight-bold text-dark mb-2">⭐ Dynamic Prize Pool Scaling (Recommended)</h6>
-                <p className="text-xs text-muted">Allow the prize pool to grow automatically as more users participate in the app.</p>
-                <div className="row">
-                  <div className="col-md-4 form-group">
-                    <div className="custom-control custom-switch mt-2">
-                      <input
-                        type="checkbox"
-                        className="custom-control-input"
-                        id="dynamicPoolSwitch"
-                        checked={lbForm.dynamic_pool_enabled}
-                        onChange={(e) => setLbForm({ ...lbForm, dynamic_pool_enabled: e.target.checked })}
-                      />
-                      <label className="custom-control-label font-weight-bold text-sm" htmlFor="dynamicPoolSwitch">
-                        Enable Dynamic Pool Scaling
-                      </label>
-                    </div>
-                  </div>
-                  {lbForm.dynamic_pool_enabled && (
-                    <>
-                      <div className="col-md-4 form-group">
-                        <label className="text-xs uppercase font-weight-bold">Pool Growth Per Participant (Coins)</label>
-                        <input
-                          type="number"
-                          className="form-control"
-                          value={lbForm.pool_growth_per_user}
-                          onChange={(e) => setLbForm({ ...lbForm, pool_growth_per_user: parseFloat(e.target.value) })}
-                        />
-                      </div>
-                      <div className="col-md-4 form-group">
-                        <label className="text-xs uppercase font-weight-bold">Maximum Prize Pool Cap</label>
-                        <input
-                          type="number"
-                          className="form-control"
-                          value={lbForm.max_pool_cap}
-                          onChange={(e) => setLbForm({ ...lbForm, max_pool_cap: parseFloat(e.target.value) })}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Display & Status Switches */}
-              <div className="row my-2">
-                <div className="col-md-4">
-                  <div className="custom-control custom-switch">
-                    <input
-                      type="checkbox"
-                      className="custom-control-input"
-                      id="showHomeSwitch"
-                      checked={lbForm.show_on_home}
-                      onChange={(e) => setLbForm({ ...lbForm, show_on_home: e.target.checked })}
-                    />
-                    <label className="custom-control-label font-weight-bold text-sm" htmlFor="showHomeSwitch">Show Banner on Home Screen</label>
-                  </div>
-                </div>
-                <div className="col-md-4">
-                  <div className="custom-control custom-switch">
-                    <input
-                      type="checkbox"
-                      className="custom-control-input"
-                      id="autoRewardSwitch"
-                      checked={lbForm.auto_reward}
-                      onChange={(e) => setLbForm({ ...lbForm, auto_reward: e.target.checked })}
-                    />
-                    <label className="custom-control-label font-weight-bold text-sm" htmlFor="autoRewardSwitch">Auto Reward Distribution at Season End</label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <button type="submit" className="btn btn-success px-4 font-weight-bold">
-                  <i className="fas fa-save mr-1"></i> Save Leaderboard Settings
-                </button>
-                <button type="button" onClick={() => setSubTab('tier_builder')} className="btn btn-primary ml-2 px-4 font-weight-bold">
-                  Configure Tier Builder →
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 3: REWARD TIER BUILDER */}
-      {subTab === 'tier_builder' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white d-flex justify-content-between align-items-center">
-            <div>
-              <h5 className="font-weight-bold mb-0"><i className="fas fa-layer-group text-primary mr-2"></i>Reward Tier Builder</h5>
-              <span className="text-muted text-xs">Configure separate custom rank rewards for each leaderboard contest</span>
-            </div>
-            <button onClick={addTierRow} className="btn btn-sm btn-success font-weight-bold">
-              <i className="fas fa-plus mr-1"></i> Add Rank Tier
-            </button>
-          </div>
-          <div className="card-body">
-            {/* Target Leaderboard Selection Bar */}
-            <div className="bg-gradient-light border rounded-lg p-3 mb-4 d-flex flex-wrap align-items-center justify-content-between">
-              <div className="d-flex align-items-center mb-2 mb-md-0">
-                <label className="text-xs uppercase font-weight-bold mr-3 mb-0 text-dark">
-                  <i className="fas fa-trophy text-warning mr-1"></i> Select Leaderboard Contest:
-                </label>
-                <select
-                  className="form-control form-control-sm font-weight-bold text-dark border-primary"
-                  style={{ width: '300px', height: '38px', borderRadius: '6px' }}
-                  value={lbForm.id || ''}
-                  onChange={(e) => {
-                    const found = leaderboardsList.find(l => l.id === e.target.value);
-                    if (found) selectLeaderboardForEdit(found);
-                  }}
-                >
-                  {leaderboardsList.map((lb) => (
-                    <option key={lb.id} value={lb.id}>
-                      {lb.name} ({lb.type} - {lb.period})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="d-flex align-items-center">
-                <span className="text-xs text-muted font-weight-bold mr-2">Configuring Tiers For:</span>
-                <span className="badge badge-primary px-3 py-2 font-weight-bold mr-2 text-sm">
-                  <i className="fas fa-crown mr-1"></i> {lbForm.name || 'Selected Contest'}
-                </span>
-                <span className={`badge ${lbForm.type === 'EARNINGS' ? 'badge-success' : 'badge-info'} px-3 py-2 font-weight-bold mr-2 text-sm`}>
-                  {lbForm.type}
-                </span>
-                <span className="badge badge-dark px-3 py-2 font-weight-bold text-sm">
-                  {lbForm.period}
-                </span>
-              </div>
-            </div>
-            <div className="table-responsive">
-              <table className="table table-bordered table-striped align-middle">
-                <thead className="thead-dark text-xs uppercase">
-                  <tr>
-                    <th>Start Rank</th>
-                    <th>End Rank</th>
-                    <th>Reward (Coins)</th>
-                    <th>Display Label</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lbForm.tiers.map((tier, idx) => (
-                    <tr key={idx}>
-                      <td style={{ width: '120px' }}>
-                        <input
-                          type="number"
-                          className="form-control form-control-sm"
-                          value={tier.start_rank}
-                          onChange={(e) => handleTierChange(idx, 'start_rank', e.target.value)}
-                        />
-                      </td>
-                      <td style={{ width: '120px' }}>
-                        <input
-                          type="number"
-                          className="form-control form-control-sm"
-                          value={tier.end_rank}
-                          onChange={(e) => handleTierChange(idx, 'end_rank', e.target.value)}
-                        />
-                      </td>
-                      <td style={{ width: '200px' }}>
-                        <input
-                          type="number"
-                          className="form-control form-control-sm font-weight-bold text-warning"
-                          value={tier.reward_coins}
-                          onChange={(e) => handleTierChange(idx, 'reward_coins', e.target.value)}
-                        />
-                      </td>
-                      <td className="font-weight-bold text-primary">
-                        {tier.start_rank === tier.end_rank ? `Rank ${tier.start_rank}` : `Rank ${tier.start_rank}-${tier.end_rank}`}
-                      </td>
-                      <td>
-                        <button onClick={() => removeTierRow(idx)} className="btn btn-xs btn-danger">
-                          <i className="fas fa-trash"></i> Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-3">
-              <button onClick={handleSaveLeaderboard} className="btn btn-success px-4 font-weight-bold">
-                <i className="fas fa-check-circle mr-1"></i> Save Tiers & Leaderboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 4: PARTICIPANTS & PLAYERS TABLE */}
-      {subTab === 'participants' && (
-        <div>
-          {/* Participant Summary Cards */}
-          <div className="row mb-3">
-            <div className="col-md-3">
-              <div className="card border-left-success p-3 shadow-sm">
-                <span className="text-muted text-xs uppercase font-weight-bold">Qualified Users</span>
-                <h4 className="font-weight-bold text-success mb-0">{participantStats.qualified_users}</h4>
-              </div>
-            </div>
-            <div className="col-md-3">
-              <div className="card border-left-danger p-3 shadow-sm">
-                <span className="text-muted text-xs uppercase font-weight-bold">Not Qualified</span>
-                <h4 className="font-weight-bold text-danger mb-0">{participantStats.not_qualified}</h4>
-              </div>
-            </div>
-            <div className="col-md-3">
-              <div className="card border-left-info p-3 shadow-sm">
-                <span className="text-muted text-xs uppercase font-weight-bold">Average Coins</span>
-                <h4 className="font-weight-bold text-info mb-0">{participantStats.average_coins?.toLocaleString()}</h4>
-              </div>
-            </div>
-            <div className="col-md-3">
-              <div className="card border-left-warning p-3 shadow-sm">
-                <span className="text-muted text-xs uppercase font-weight-bold">Highest Score</span>
-                <h4 className="font-weight-bold text-warning mb-0">{participantStats.highest_coins?.toLocaleString()}</h4>
-              </div>
-            </div>
-          </div>
-
-          {/* Top Players Table */}
-          <div className="card shadow-sm border-0 rounded-lg">
-            <div className="card-header bg-white d-flex flex-wrap justify-content-between align-items-center">
-              <h5 className="font-weight-bold mb-0"><i className="fas fa-users-cog text-primary mr-2"></i>Top Players Table</h5>
-              <div className="form-inline">
-                <input
-                  type="text"
-                  className="form-control form-control-sm mr-2"
-                  placeholder="Search user name/UID/email..."
-                  value={playersSearch}
-                  onChange={(e) => setPlayersSearch(e.target.value)}
-                />
-                <button onClick={fetchParticipants} className="btn btn-sm btn-secondary">
-                  <i className="fas fa-search"></i>
-                </button>
-              </div>
-            </div>
-            <div className="card-body p-0">
-              <div className="table-responsive">
-                <table className="table table-hover table-striped mb-0 align-middle">
-                  <thead className="thead-light text-xs uppercase">
-                    <tr>
-                      <th>Rank</th>
-                      <th>User</th>
-                      <th>Coins</th>
-                      <th>Offers</th>
-                      <th>Referrals</th>
-                      <th>Anti-Cheat Flag</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {playersList.map((player) => (
-                      <tr key={player.id}>
-                        <td className="font-weight-bold">#{player.rank}</td>
                         <td>
-                          <div className="d-flex align-items-center">
-                            <img src={player.profile_pic || 'https://ui-avatars.com/api/?name=User'} className="rounded-circle mr-2" style={{ width: '32px', height: '32px' }} alt="" />
-                            <div>
-                              <div className="font-weight-bold">{player.name}</div>
-                              <span className="text-muted text-xs">UID: {player.uid}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="font-weight-bold text-warning">{player.coins.toLocaleString()}</td>
-                        <td>{player.offers}</td>
-                        <td>{player.referrals}</td>
-                        <td>
-                          <span className={`badge ${player.flag_level === 'High' ? 'badge-danger' : (player.flag_level === 'Medium' ? 'badge-warning' : 'badge-success')}`}>
-                            {player.flag_level} Risk
+                          <span className={`badge px-2 py-1 ${lb.type === 'EARNINGS' ? 'badge-success' : 'badge-info'}`}>
+                            {lb.type === 'EARNINGS' ? '💰 Earnings' : '👥 Referral'}
                           </span>
                         </td>
                         <td>
-                          <span className={`badge ${player.status === 'Qualified' ? 'badge-success' : 'badge-danger'}`}>{player.status}</span>
+                          <span className="badge badge-light border px-2 py-1 font-weight-bold">{lb.period}</span>
+                        </td>
+                        <td className="font-weight-bold text-warning">
+                          {parseFloat(lb.reward_pool).toLocaleString()} Coins
                         </td>
                         <td>
-                          <button onClick={() => setSelectedPlayer(player)} className="btn btn-xs btn-outline-info mr-1">
-                            <i className="fas fa-eye"></i> View
-                          </button>
+                          {lb.dynamic_pool_enabled ? (
+                            <span className="text-success text-xs font-weight-bold">
+                              + {lb.pool_growth_per_user} / user (Cap: {parseFloat(lb.max_pool_cap).toLocaleString()})
+                            </span>
+                          ) : (
+                            <span className="text-muted text-xs">Fixed Pool</span>
+                          )}
+                        </td>
+                        <td className="font-weight-bold">Top {lb.max_winners}</td>
+                        <td>
+                          {lb.show_on_home ? (
+                            <span className="badge badge-success-light text-success font-weight-bold"><i className="fas fa-check-circle mr-1"></i>Visible</span>
+                          ) : (
+                            <span className="badge badge-light text-muted"><i className="fas fa-eye-slash mr-1"></i>Hidden</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge px-2 py-1 ${lb.status === 'ACTIVE' ? 'badge-success' : 'badge-secondary'}`}>
+                            {lb.status}
+                          </span>
+                        </td>
+                        <td className="text-right px-4">
                           <button
                             onClick={() => {
-                              setSelectedPlayer(player);
-                              setAdjustModal(true);
+                              selectLeaderboardForEdit(lb);
+                              setSubTab('builder');
                             }}
-                            className="btn btn-xs btn-outline-warning"
+                            className="btn btn-xs btn-outline-primary mr-1"
+                            title="Edit Parameters & Tiers"
                           >
-                            <i className="fas fa-sliders-h"></i> Adjust
+                            <i className="fas fa-cog mr-1"></i> Settings
+                          </button>
+                          <button
+                            onClick={() => handleDistributeRewards(lb)}
+                            className="btn btn-xs btn-success font-weight-bold"
+                            title="Pay Winners Now"
+                          >
+                            <i className="fas fa-gift mr-1"></i> Pay Winners
                           </button>
                         </td>
                       </tr>
@@ -1042,212 +618,373 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
         </div>
       )}
 
-      {/* SUBTAB 5: ANTI-CHEAT PANEL */}
-      {subTab === 'anti_cheat' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white font-weight-bold">
-            <i className="fas fa-user-shield text-danger mr-2"></i>Anti-Cheat Automated Flag Analysis
-          </div>
-          <div className="card-body">
-            <div className="row">
-              <div className="col-md-4">
-                <div className="card bg-light p-3 mb-3 border-left-danger">
-                  <span className="text-muted text-xs font-weight-bold">Duplicate Devices</span>
-                  <h3 className="font-weight-bold text-danger">{antiCheatData.anti_cheat_summary?.duplicate_device_flags}</h3>
-                </div>
+      {/* TAB 2: CONTEST & TIER BUILDER */}
+      {subTab === 'builder' && (
+        <div>
+          {/* CONTEST SELECTOR HEADER BAR */}
+          <div className="card border-0 shadow-sm mb-4 rounded-lg bg-light">
+            <div className="card-body p-3 d-flex flex-wrap align-items-center justify-content-between">
+              <div className="d-flex align-items-center mb-2 mb-md-0">
+                <span className="font-weight-bold text-dark mr-3">Select Contest to Edit:</span>
+                <select
+                  value={editingLb?.id || ''}
+                  onChange={(e) => {
+                    const selected = leaderboardsList.find(l => l.id === e.target.value);
+                    if (selected) selectLeaderboardForEdit(selected);
+                  }}
+                  className="form-control form-control-sm font-weight-bold border-primary shadow-sm"
+                  style={{ width: '280px' }}
+                >
+                  {leaderboardsList.map((lb) => (
+                    <option key={lb.id} value={lb.id}>
+                      {lb.name} ({lb.type} - {lb.period})
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="col-md-4">
-                <div className="card bg-light p-3 mb-3 border-left-warning">
-                  <span className="text-muted text-xs font-weight-bold">Emulator Detections</span>
-                  <h3 className="font-weight-bold text-warning">{antiCheatData.anti_cheat_summary?.emulator_flags}</h3>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div className="card bg-light p-3 mb-3 border-left-info">
-                  <span className="text-muted text-xs font-weight-bold">Rapid Offer Spam</span>
-                  <h3 className="font-weight-bold text-info">{antiCheatData.anti_cheat_summary?.rapid_offer_spam_flags}</h3>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* SUBTAB 6: COIN STATISTICS */}
-      {subTab === 'coin_stats' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white font-weight-bold">
-            <i className="fas fa-coins text-warning mr-2"></i>Coins Economics & Statistics
-          </div>
-          <div className="card-body">
-            <div className="row">
-              <div className="col-md-4 mb-3">
-                <div className="card bg-primary text-white p-3">
-                  <span className="text-xs uppercase">Coins Earned Today</span>
-                  <h2>{coinStats.coins_earned_today?.toLocaleString()}</h2>
-                </div>
-              </div>
-              <div className="col-md-4 mb-3">
-                <div className="card bg-success text-white p-3">
-                  <span className="text-xs uppercase">Coins Distributed</span>
-                  <h2>{coinStats.coins_distributed?.toLocaleString()}</h2>
-                </div>
-              </div>
-              <div className="col-md-4 mb-3">
-                <div className="card bg-warning text-dark p-3">
-                  <span className="text-xs uppercase font-weight-bold">Current Coin Supply</span>
-                  <h2>{coinStats.current_coin_supply?.toLocaleString()}</h2>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 7: REWARD DISTRIBUTION MANAGER */}
-      {subTab === 'distribution' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white font-weight-bold">
-            <i className="fas fa-gift text-success mr-2"></i>Reward Distribution Manager
-          </div>
-          <div className="card-body text-center py-5">
-            <i className="fas fa-trophy fa-3x text-warning mb-3"></i>
-            <h4>End-of-Season Winner Approval & Distribution</h4>
-            <p className="text-muted max-w-md mx-auto">Click below to review top qualified players, approve rewards, and automatically dispatch coin transactions & push notifications.</p>
-            <button onClick={handleDistributeRewards} className="btn btn-lg btn-success font-weight-bold px-4">
-              <i className="fas fa-paper-plane mr-2"></i> Approve & Distribute Winner Rewards
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* SUBTAB 8: ANNOUNCEMENT PANEL & FCM PUSH NOTIFICATIONS */}
-      {subTab === 'announcement' && (
-        <div className="row">
-          <div className="col-md-6">
-            <div className="card shadow-sm border-0 rounded-lg">
-              <div className="card-header bg-white font-weight-bold">
-                <i className="fas fa-bullhorn text-primary mr-2"></i>Leaderboard Home Announcement Banner
-              </div>
-              <div className="card-body">
-                <form onSubmit={handleSaveAnnouncement}>
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Banner Title</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={announcementForm.title}
-                      onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Announcement Message</label>
-                    <textarea
-                      className="form-control"
-                      rows="3"
-                      value={announcementForm.message}
-                      onChange={(e) => setAnnouncementForm({ ...announcementForm, message: e.target.value })}
-                      required
-                    ></textarea>
-                  </div>
-                  <button type="submit" className="btn btn-primary font-weight-bold">
-                    <i className="fas fa-broadcast-tower mr-1"></i> Update Live Banner
-                  </button>
-                </form>
+              <div>
+                <span className="badge badge-primary px-3 py-2 mr-2">
+                  Editing: <strong>{lbForm.name}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSaveLbConfig}
+                  className="btn btn-sm btn-success font-weight-bold shadow-sm"
+                >
+                  <i className="fas fa-save mr-1"></i> Save Changes
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="col-md-6">
-            <div className="card shadow-sm border-0 rounded-lg">
-              <div className="card-header bg-white font-weight-bold">
-                <i className="fas fa-paper-plane text-success mr-2"></i>Dispatch Winner FCM Push Notifications
-              </div>
-              <div className="card-body">
-                <form onSubmit={handleSendFcmPush}>
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Notification Target</label>
-                    <select
-                      className="form-control"
-                      value={fcmForm.target_type}
-                      onChange={(e) => setFcmForm({ ...fcmForm, target_type: e.target.value })}
-                    >
-                      <option value="broadcast">📢 Global Broadcast (All App Users)</option>
-                      <option value="specific">🎯 Specific Winner User ID</option>
-                    </select>
-                  </div>
-
-                  {fcmForm.target_type === 'specific' && (
-                    <div className="form-group">
-                      <label className="text-xs uppercase font-weight-bold">Target Winner User ID</label>
+          <div className="row">
+            {/* LEFT COLUMN: CONTEST PARAMETERS FORM */}
+            <div className="col-lg-6 mb-4">
+              <div className="card border-0 shadow-sm rounded-lg h-100">
+                <div className="card-header bg-white font-weight-bold border-0">
+                  <i className="fas fa-sliders-h text-primary mr-2"></i>Contest Settings & Scaling Rules
+                </div>
+                <div className="card-body">
+                  <form onSubmit={handleSaveLbConfig}>
+                    <div className="form-group mb-3">
+                      <label className="text-xs font-weight-bold text-muted uppercase">Contest Name</label>
                       <input
                         type="text"
-                        className="form-control"
-                        placeholder="Paste user UUID or public UID"
-                        value={fcmForm.target_user_id}
-                        onChange={(e) => setFcmForm({ ...fcmForm, target_user_id: e.target.value })}
+                        value={lbForm.name}
+                        onChange={(e) => setLbForm({ ...lbForm, name: e.target.value })}
+                        className="form-control font-weight-bold"
+                        placeholder="e.g. Daily Earnings Leaderboard"
                         required
                       />
                     </div>
-                  )}
 
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Push Notification Title</label>
-                    <input
-                      type="text"
-                      className="form-control font-weight-bold"
-                      value={fcmForm.title}
-                      onChange={(e) => setFcmForm({ ...fcmForm, title: e.target.value })}
-                      required
-                    />
+                    <div className="row">
+                      <div className="col-md-6 form-group mb-3">
+                        <label className="text-xs font-weight-bold text-muted uppercase">Contest Type</label>
+                        <select
+                          value={lbForm.type}
+                          onChange={(e) => setLbForm({ ...lbForm, type: e.target.value })}
+                          className="form-control font-weight-bold"
+                        >
+                          <option value="EARNINGS">💰 EARNINGS (Excludes Referrals)</option>
+                          <option value="REFERRAL">👥 REFERRAL (Invite Count)</option>
+                        </select>
+                      </div>
+
+                      <div className="col-md-6 form-group mb-3">
+                        <label className="text-xs font-weight-bold text-muted uppercase">Period Reset Frequency</label>
+                        <select
+                          value={lbForm.period}
+                          onChange={(e) => setLbForm({ ...lbForm, period: e.target.value })}
+                          className="form-control font-weight-bold"
+                        >
+                          <option value="DAILY">DAILY (24 Hours Reset)</option>
+                          <option value="WEEKLY">WEEKLY (7 Days Reset)</option>
+                          <option value="MONTHLY">MONTHLY (Monthly Reset)</option>
+                          <option value="ALL_TIME">ALL TIME (Lifetime Total)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      <div className="col-md-6 form-group mb-3">
+                        <label className="text-xs font-weight-bold text-muted uppercase">Base Reward Pool (Coins)</label>
+                        <input
+                          type="number"
+                          value={lbForm.reward_pool}
+                          onChange={(e) => setLbForm({ ...lbForm, reward_pool: parseFloat(e.target.value) || 0 })}
+                          className="form-control font-weight-bold text-warning"
+                          required
+                        />
+                      </div>
+
+                      <div className="col-md-6 form-group mb-3">
+                        <label className="text-xs font-weight-bold text-muted uppercase">Max Winners Count</label>
+                        <input
+                          type="number"
+                          value={lbForm.max_winners}
+                          onChange={(e) => setLbForm({ ...lbForm, max_winners: parseInt(e.target.value) || 10 })}
+                          className="form-control font-weight-bold"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* DYNAMIC SCALING BOX */}
+                    <div className="p-3 bg-light rounded-lg mb-3 border">
+                      <div className="custom-control custom-switch mb-2">
+                        <input
+                          type="checkbox"
+                          id="dynamicPoolSwitch"
+                          checked={lbForm.dynamic_pool_enabled}
+                          onChange={(e) => setLbForm({ ...lbForm, dynamic_pool_enabled: e.target.checked })}
+                          className="custom-control-input"
+                        />
+                        <label htmlFor="dynamicPoolSwitch" className="custom-control-label font-weight-bold text-dark">
+                          Enable Dynamic Scaling Prize Pool
+                        </label>
+                      </div>
+                      <small className="text-muted d-block mb-3">
+                        Automatically grows prize pool based on total app user registrations.
+                      </small>
+
+                      {lbForm.dynamic_pool_enabled && (
+                        <div className="row">
+                          <div className="col-6 form-group mb-0">
+                            <label className="text-xs font-weight-bold">Growth Rate / User</label>
+                            <input
+                              type="number"
+                              value={lbForm.pool_growth_per_user}
+                              onChange={(e) => setLbForm({ ...lbForm, pool_growth_per_user: parseFloat(e.target.value) || 0 })}
+                              className="form-control form-control-sm"
+                            />
+                          </div>
+                          <div className="col-6 form-group mb-0">
+                            <label className="text-xs font-weight-bold">Max Pool Cap</label>
+                            <input
+                              type="number"
+                              value={lbForm.max_pool_cap}
+                              onChange={(e) => setLbForm({ ...lbForm, max_pool_cap: parseFloat(e.target.value) || 0 })}
+                              className="form-control form-control-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="row">
+                      <div className="col-md-6 form-group mb-3">
+                        <label className="text-xs font-weight-bold text-muted uppercase">Start Date & Time (Optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={lbForm.start_date}
+                          onChange={(e) => setLbForm({ ...lbForm, start_date: e.target.value })}
+                          className="form-control form-control-sm"
+                        />
+                      </div>
+                      <div className="col-md-6 form-group mb-3">
+                        <label className="text-xs font-weight-bold text-muted uppercase">End Date & Time (Optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={lbForm.end_date}
+                          onChange={(e) => setLbForm({ ...lbForm, end_date: e.target.value })}
+                          className="form-control form-control-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="d-flex flex-wrap justify-content-between align-items-center mt-3 pt-3 border-top">
+                      <div className="custom-control custom-switch">
+                        <input
+                          type="checkbox"
+                          id="showHomeSwitch"
+                          checked={lbForm.show_on_home}
+                          onChange={(e) => setLbForm({ ...lbForm, show_on_home: e.target.checked })}
+                          className="custom-control-input"
+                        />
+                        <label htmlFor="showHomeSwitch" className="custom-control-label text-sm font-weight-bold">
+                          Show Banner on App Home Screen
+                        </label>
+                      </div>
+                      <button type="submit" className="btn btn-primary font-weight-bold px-4">
+                        <i className="fas fa-save mr-1"></i> Save Contest
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: REWARD TIER BUILDER */}
+            <div className="col-lg-6 mb-4">
+              <div className="card border-0 shadow-sm rounded-lg h-100">
+                <div className="card-header bg-white font-weight-bold border-0 d-flex justify-content-between align-items-center">
+                  <div>
+                    <i className="fas fa-trophy text-warning mr-2"></i>Reward Tiers & Prize Allocation
                   </div>
-
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Push Message Body</label>
-                    <textarea
-                      className="form-control"
-                      rows="3"
-                      value={fcmForm.message}
-                      onChange={(e) => setFcmForm({ ...fcmForm, message: e.target.value })}
-                      required
-                    ></textarea>
-                  </div>
-
-                  <button type="submit" className="btn btn-success font-weight-bold">
-                    <i className="fas fa-paper-plane mr-1"></i> Send FCM Push Notification
+                  <button onClick={addTierRow} className="btn btn-xs btn-outline-success font-weight-bold">
+                    <i className="fas fa-plus mr-1"></i> Add Tier
                   </button>
-                </form>
+                </div>
+                <div className="card-body">
+                  <div className="alert alert-info py-2 px-3 text-xs mb-3">
+                    <i className="fas fa-info-circle mr-1"></i> Define rank brackets and prize coins for each position.
+                  </div>
+
+                  <div className="table-responsive">
+                    <table className="table table-sm table-bordered align-middle">
+                      <thead className="thead-light text-xs uppercase">
+                        <tr>
+                          <th>Start Rank</th>
+                          <th>End Rank</th>
+                          <th>Coins / Winner</th>
+                          <th>Total Tier Coins</th>
+                          <th style={{ width: '40px' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lbForm.tiers.map((tier, idx) => {
+                          const winnerCount = Math.max(1, (tier.end_rank - tier.start_rank) + 1);
+                          const subtotal = tier.reward_coins * winnerCount;
+
+                          return (
+                            <tr key={idx}>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={tier.start_rank}
+                                  onChange={(e) => handleTierChange(idx, 'start_rank', e.target.value)}
+                                  className="form-control form-control-sm text-center font-weight-bold"
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={tier.end_rank}
+                                  onChange={(e) => handleTierChange(idx, 'end_rank', e.target.value)}
+                                  className="form-control form-control-sm text-center font-weight-bold"
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={tier.reward_coins}
+                                  onChange={(e) => handleTierChange(idx, 'reward_coins', e.target.value)}
+                                  className="form-control form-control-sm font-weight-bold text-warning"
+                                />
+                              </td>
+                              <td className="font-weight-bold align-middle">
+                                {subtotal.toLocaleString()} Coins
+                              </td>
+                              <td className="text-center align-middle">
+                                <button
+                                  type="button"
+                                  onClick={() => removeTierRow(idx)}
+                                  className="btn btn-xs btn-danger"
+                                >
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="p-3 bg-dark text-white rounded-lg mt-3 d-flex justify-content-between align-items-center">
+                    <div>
+                      <span className="text-xs text-muted uppercase d-block">Total Allocated Tiers</span>
+                      <strong className="text-warning h4 mb-0">{totalAllocatedCoins.toLocaleString()} Coins</strong>
+                    </div>
+                    <button onClick={handleSaveLbConfig} className="btn btn-warning btn-sm text-dark font-weight-bold">
+                      <i className="fas fa-check-circle mr-1"></i> Save Tiers
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* SUBTAB 9: AUDIT LOGS */}
-      {subTab === 'logs' && (
-        <div className="card shadow-sm border-0 rounded-lg">
-          <div className="card-header bg-white font-weight-bold">
-            <i className="fas fa-history text-secondary mr-2"></i>Admin Leaderboard Audit Logs
+      {/* TAB 3: PLAYERS & MODERATION */}
+      {subTab === 'players' && (
+        <div className="card border-0 shadow-sm rounded-lg">
+          <div className="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center">
+            <h5 className="font-weight-bold text-dark mb-0">
+              <i className="fas fa-users text-primary mr-2"></i>Participant Standings & Anti-Cheat Moderation
+            </h5>
+            <div className="form-inline mt-2 mt-md-0">
+              <input
+                type="text"
+                value={playersSearch}
+                onChange={(e) => setPlayersSearch(e.target.value)}
+                placeholder="Search player name, email, UID..."
+                className="form-control form-control-sm mr-2"
+                style={{ width: '250px' }}
+              />
+              <button onClick={fetchParticipants} className="btn btn-sm btn-primary">
+                <i className="fas fa-search"></i>
+              </button>
+            </div>
           </div>
           <div className="card-body p-0">
             <div className="table-responsive">
-              <table className="table table-striped table-hover mb-0">
+              <table className="table table-hover align-middle mb-0">
                 <thead className="thead-light text-xs uppercase">
                   <tr>
-                    <th>Timestamp</th>
-                    <th>Action</th>
-                    <th>Target User / Item</th>
-                    <th>Details</th>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Email</th>
+                    <th>Total Coins</th>
+                    <th>Balance</th>
+                    <th>Offers</th>
+                    <th>Referrals</th>
+                    <th>Risk Flag</th>
+                    <th className="text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {logsList.map((log) => (
-                    <tr key={log.id}>
-                      <td className="text-muted text-xs">{new Date(log.created_at).toLocaleString()}</td>
-                      <td><span className="badge badge-info">{log.action}</span></td>
-                      <td className="font-weight-bold">{log.target_user || 'System'}</td>
-                      <td className="text-sm">{log.details}</td>
+                  {playersList.map((player) => (
+                    <tr key={player.id}>
+                      <td className="font-weight-bold">#{player.rank}</td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          <img
+                            src={player.profile_pic || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name)}`}
+                            alt="avatar"
+                            className="rounded-circle mr-2"
+                            style={{ width: '32px', height: '32px' }}
+                          />
+                          <div>
+                            <span className="font-weight-bold text-dark d-block">{player.name}</span>
+                            <small className="text-muted">UID: {player.uid}</small>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="text-sm">{player.email}</td>
+                      <td className="font-weight-bold text-warning">{player.coins?.toLocaleString()}</td>
+                      <td className="font-weight-bold">{player.current_balance?.toLocaleString()}</td>
+                      <td>{player.offers}</td>
+                      <td>{player.referrals}</td>
+                      <td>
+                        <span className={`badge ${player.flag_level === 'High' ? 'badge-danger' : (player.flag_level === 'Medium' ? 'badge-warning' : 'badge-success')}`}>
+                          {player.flag_level || 'Low'} Risk
+                        </span>
+                      </td>
+                      <td className="text-right">
+                        <button
+                          onClick={() => {
+                            setSelectedPlayer(player);
+                            setAdjustModal(true);
+                          }}
+                          className="btn btn-xs btn-outline-primary"
+                        >
+                          <i className="fas fa-user-cog"></i> Moderate
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1257,56 +994,182 @@ export default function AdminLeaderboard({ apiBase, getHeaders, showNotice }) {
         </div>
       )}
 
-      {/* Score Adjustment Modal */}
-      {adjustModal && selectedPlayer && (
-        <div className="modal d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content rounded-lg shadow-lg">
-              <div className="modal-header">
-                <h5 className="modal-title font-weight-bold">Manual Player Adjustment</h5>
-                <button type="button" className="close" onClick={() => setAdjustModal(false)}>&times;</button>
+      {/* TAB 4: ANTI-CHEAT PANEL */}
+      {subTab === 'security' && (
+        <div className="card border-0 shadow-sm rounded-lg">
+          <div className="card-header bg-white font-weight-bold">
+            <i className="fas fa-shield-alt text-danger mr-2"></i>Anti-Cheat Flags & Security Summary
+          </div>
+          <div className="card-body">
+            <div className="row mb-4">
+              <div className="col-md-3 col-6 mb-3">
+                <div className="p-3 bg-light rounded-lg border">
+                  <span className="text-xs text-muted font-weight-bold uppercase">Duplicate Device IDs</span>
+                  <h3 className="font-weight-bold text-danger mb-0 mt-1">{antiCheatData.anti_cheat_summary?.duplicate_device_flags}</h3>
+                </div>
               </div>
-              <form onSubmit={handleScoreAdjustSubmit}>
-                <div className="modal-body">
-                  <p className="text-sm">Adjusting player: <strong>{selectedPlayer.name}</strong> (UID: {selectedPlayer.uid})</p>
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Action Type</label>
-                    <select className="form-control" value={adjustAction} onChange={(e) => setAdjustAction(e.target.value)}>
-                      <option value="INCREASE">➕ Increase Score / Balance</option>
-                      <option value="DECREASE">➖ Decrease Score / Balance</option>
-                      <option value="DISQUALIFY">🚫 Disqualify Player</option>
-                      <option value="RESTORE">✅ Restore Player</option>
-                    </select>
-                  </div>
-                  {(adjustAction === 'INCREASE' || adjustAction === 'DECREASE') && (
-                    <div className="form-group">
-                      <label className="text-xs uppercase font-weight-bold">Amount (Coins)</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        placeholder="e.g. 500"
-                        value={adjustAmount}
-                        onChange={(e) => setAdjustAmount(e.target.value)}
-                        required
-                      />
-                    </div>
-                  )}
-                  <div className="form-group">
-                    <label className="text-xs uppercase font-weight-bold">Reason / Note</label>
+              <div className="col-md-3 col-6 mb-3">
+                <div className="p-3 bg-light rounded-lg border">
+                  <span className="text-xs text-muted font-weight-bold uppercase">Emulator Detected</span>
+                  <h3 className="font-weight-bold text-danger mb-0 mt-1">{antiCheatData.anti_cheat_summary?.emulator_flags}</h3>
+                </div>
+              </div>
+              <div className="col-md-3 col-6 mb-3">
+                <div className="p-3 bg-light rounded-lg border">
+                  <span className="text-xs text-muted font-weight-bold uppercase">Rapid Spam Flags</span>
+                  <h3 className="font-weight-bold text-warning mb-0 mt-1">{antiCheatData.anti_cheat_summary?.rapid_offer_spam_flags}</h3>
+                </div>
+              </div>
+              <div className="col-md-3 col-6 mb-3">
+                <div className="p-3 bg-light rounded-lg border">
+                  <span className="text-xs text-muted font-weight-bold uppercase">VPN / Proxy Flags</span>
+                  <h3 className="font-weight-bold text-info mb-0 mt-1">{antiCheatData.anti_cheat_summary?.vpn_proxy_flags}</h3>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: PAYOUTS, FCM & AUDIT */}
+      {subTab === 'payouts' && (
+        <div className="row">
+          <div className="col-lg-6 mb-4">
+            <div className="card border-0 shadow-sm rounded-lg mb-4">
+              <div className="card-header bg-white font-weight-bold">
+                <i className="fas fa-gift text-success mr-2"></i>Manual Winner Payout Execution
+              </div>
+              <div className="card-body">
+                <p className="text-muted text-sm mb-3">
+                  Approve and credit coins directly to top winners for the selected contest.
+                </p>
+                <button onClick={() => handleDistributeRewards(editingLb)} className="btn btn-success font-weight-bold btn-block">
+                  <i className="fas fa-check-circle mr-1"></i> Approve & Pay Winners Now
+                </button>
+              </div>
+            </div>
+
+            <div className="card border-0 shadow-sm rounded-lg">
+              <div className="card-header bg-white font-weight-bold">
+                <i className="fas fa-paper-plane text-primary mr-2"></i>Dispatch Winner FCM Push Notification
+              </div>
+              <div className="card-body">
+                <form onSubmit={handleSendFcmPush}>
+                  <div className="form-group mb-2">
+                    <label className="text-xs font-weight-bold">Push Title</label>
                     <input
                       type="text"
-                      className="form-control"
-                      placeholder="e.g. Admin bonus adjustment"
-                      value={adjustReason}
-                      onChange={(e) => setAdjustReason(e.target.value)}
+                      value={fcmForm.title}
+                      onChange={(e) => setFcmForm({ ...fcmForm, title: e.target.value })}
+                      className="form-control form-control-sm"
+                      required
                     />
                   </div>
+                  <div className="form-group mb-3">
+                    <label className="text-xs font-weight-bold">Message</label>
+                    <textarea
+                      rows="2"
+                      value={fcmForm.message}
+                      onChange={(e) => setFcmForm({ ...fcmForm, message: e.target.value })}
+                      className="form-control form-control-sm"
+                      required
+                    ></textarea>
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-sm font-weight-bold">
+                    <i className="fas fa-paper-plane mr-1"></i> Send Push Notification
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-lg-6 mb-4">
+            <div className="card border-0 shadow-sm rounded-lg h-100">
+              <div className="card-header bg-white font-weight-bold">
+                <i className="fas fa-bullhorn text-warning mr-2"></i>Home Screen Banner Announcement
+              </div>
+              <div className="card-body">
+                <form onSubmit={handleSaveAnnouncement}>
+                  <div className="form-group mb-2">
+                    <label className="text-xs font-weight-bold">Banner Title</label>
+                    <input
+                      type="text"
+                      value={announcementForm.title}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
+                      className="form-control form-control-sm"
+                    />
+                  </div>
+                  <div className="form-group mb-3">
+                    <label className="text-xs font-weight-bold">Banner Subtitle / Message</label>
+                    <textarea
+                      rows="3"
+                      value={announcementForm.message}
+                      onChange={(e) => setAnnouncementForm({ ...announcementForm, message: e.target.value })}
+                      className="form-control form-control-sm"
+                    ></textarea>
+                  </div>
+                  <button type="submit" className="btn btn-warning text-dark font-weight-bold btn-sm">
+                    <i className="fas fa-save mr-1"></i> Update Home Banner
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODERATE PLAYER MODAL */}
+      {adjustModal && selectedPlayer && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-lg">
+              <div className="modal-header bg-dark text-white">
+                <h5 className="modal-title font-weight-bold">Moderate Player: {selectedPlayer.name}</h5>
+                <button onClick={() => setAdjustModal(false)} className="close text-white">&times;</button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group mb-3">
+                  <label className="text-xs font-weight-bold">Action</label>
+                  <select
+                    value={adjustAction}
+                    onChange={(e) => setAdjustAction(e.target.value)}
+                    className="form-control font-weight-bold"
+                  >
+                    <option value="INCREASE">➕ Add Score Coins</option>
+                    <option value="DECREASE">➖ Deduct Score Coins</option>
+                    <option value="DISQUALIFY">🚫 Disqualify Player</option>
+                    <option value="RESTORE">✅ Restore Player Eligibility</option>
+                  </select>
                 </div>
-                <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setAdjustModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary font-weight-bold">Confirm Adjustment</button>
+                {(adjustAction === 'INCREASE' || adjustAction === 'DECREASE') && (
+                  <div className="form-group mb-3">
+                    <label className="text-xs font-weight-bold">Coin Amount</label>
+                    <input
+                      type="number"
+                      value={adjustAmount}
+                      onChange={(e) => setAdjustAmount(e.target.value)}
+                      className="form-control"
+                      placeholder="e.g. 500"
+                    />
+                  </div>
+                )}
+                <div className="form-group mb-3">
+                  <label className="text-xs font-weight-bold">Reason / Remark</label>
+                  <input
+                    type="text"
+                    value={adjustReason}
+                    onChange={(e) => setAdjustReason(e.target.value)}
+                    className="form-control"
+                    placeholder="Reason for audit log..."
+                  />
                 </div>
-              </form>
+              </div>
+              <div className="modal-footer bg-light">
+                <button onClick={() => setAdjustModal(false)} className="btn btn-secondary btn-sm">Cancel</button>
+                <button onClick={handleAdjustPlayerScore} className="btn btn-primary btn-sm font-weight-bold">
+                  Submit Action
+                </button>
+              </div>
             </div>
           </div>
         </div>
