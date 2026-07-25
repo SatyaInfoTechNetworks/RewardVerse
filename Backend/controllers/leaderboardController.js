@@ -677,18 +677,19 @@ export const listAdminLeaderboards = async (req, res) => {
   try {
     let [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
 
-    // Auto-seed default leaderboards if table is empty
-    if (leaderboards.length === 0) {
-      const defaultLbs = [
-        { name: 'Daily Earnings', type: 'EARNINGS', period: 'DAILY', reward_pool: 5000, pool_growth_per_user: 5, max_pool_cap: 25000, max_winners: 20 },
-        { name: 'Weekly Earnings', type: 'EARNINGS', period: 'WEEKLY', reward_pool: 15000, pool_growth_per_user: 10, max_pool_cap: 50000, max_winners: 30 },
-        { name: 'Monthly Earnings', type: 'EARNINGS', period: 'MONTHLY', reward_pool: 42500, pool_growth_per_user: 15, max_pool_cap: 100000, max_winners: 50 },
-        { name: 'All Time Earnings', type: 'EARNINGS', period: 'ALL_TIME', reward_pool: 100000, pool_growth_per_user: 25, max_pool_cap: 250000, max_winners: 100 },
-        { name: 'Daily Referrals', type: 'REFERRAL', period: 'DAILY', reward_pool: 3000, pool_growth_per_user: 5, max_pool_cap: 15000, max_winners: 10 },
-        { name: 'Monthly Referrals', type: 'REFERRAL', period: 'MONTHLY', reward_pool: 25000, pool_growth_per_user: 15, max_pool_cap: 75000, max_winners: 25 }
-      ];
+    const defaultLbs = [
+      { name: 'Daily Earnings', type: 'EARNINGS', period: 'DAILY', reward_pool: 5000, pool_growth_per_user: 5, max_pool_cap: 25000, max_winners: 20 },
+      { name: 'Weekly Earnings', type: 'EARNINGS', period: 'WEEKLY', reward_pool: 15000, pool_growth_per_user: 10, max_pool_cap: 50000, max_winners: 30 },
+      { name: 'Monthly Earnings', type: 'EARNINGS', period: 'MONTHLY', reward_pool: 42500, pool_growth_per_user: 15, max_pool_cap: 100000, max_winners: 50 },
+      { name: 'All Time Earnings', type: 'EARNINGS', period: 'ALL_TIME', reward_pool: 100000, pool_growth_per_user: 25, max_pool_cap: 250000, max_winners: 100 },
+      { name: 'Daily Referrals', type: 'REFERRAL', period: 'DAILY', reward_pool: 3000, pool_growth_per_user: 5, max_pool_cap: 15000, max_winners: 10 },
+      { name: 'Monthly Referrals', type: 'REFERRAL', period: 'MONTHLY', reward_pool: 25000, pool_growth_per_user: 15, max_pool_cap: 75000, max_winners: 25 }
+    ];
 
-      for (const d of defaultLbs) {
+    let inserted = false;
+    for (const d of defaultLbs) {
+      const exists = leaderboards.some(l => l.type === d.type && l.period === d.period);
+      if (!exists) {
         const lbId = uuidv4();
         await pool.query(
           `INSERT INTO leaderboards (id, name, type, period, reward_pool, dynamic_pool_enabled, pool_growth_per_user, max_pool_cap, max_winners, show_on_home, status)
@@ -711,8 +712,11 @@ export const listAdminLeaderboards = async (req, res) => {
             [uuidv4(), lbId, t.start_rank, t.end_rank, t.reward_coins]
           );
         }
+        inserted = true;
       }
+    }
 
+    if (inserted) {
       [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
     }
 
