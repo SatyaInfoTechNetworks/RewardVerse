@@ -700,16 +700,6 @@ export const listAdminLeaderboards = async (req, res) => {
   }
 };
 
-    res.json({
-      success: true,
-      leaderboards
-    });
-  } catch (error) {
-    console.error('Error listing admin leaderboards:', error);
-    res.status(500).json({ success: false, message: 'Failed to list leaderboards.' });
-  }
-};
-
 /**
  * POST /api/admin/leaderboard/save
  * Create or update leaderboard setting & dynamic tier builder rules
