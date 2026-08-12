@@ -153,10 +153,10 @@ export const getEarningsLeaderboard = async (req, res) => {
            GREATEST(COALESCE(SUM(CASE WHEN UPPER(t.type) = 'CREDIT' THEN t.amount ELSE 0 END), 0), COALESCE(u.balance, 0)) as score
          FROM users u
          LEFT JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
-         WHERE u.is_banned = FALSE
+         WHERE COALESCE(u.is_banned, 0) = 0
          GROUP BY u.id
-         HAVING score > 0
-         ORDER BY score DESC
+         HAVING score >= 0
+         ORDER BY score DESC, u.created_at DESC
          LIMIT 100`
       );
 
@@ -240,7 +240,7 @@ export const getEarningsLeaderboard = async (req, res) => {
     }
 
     // Query top earnings filtered by minScore threshold & excluding streak, spin, and contest earnings
-    const [rows] = await pool.query(
+    let [rows] = await pool.query(
       `SELECT 
          u.id as user_id,
          u.user_id as public_id,
@@ -253,7 +253,7 @@ export const getEarningsLeaderboard = async (req, res) => {
          AND t.source NOT LIKE '%SPIN%' 
          AND t.source NOT LIKE '%STREAK%' 
          AND t.source NOT LIKE '%CONTEST%'
-         AND u.is_banned = FALSE 
+         AND COALESCE(u.is_banned, 0) = 0 
          AND ${dateCondition}
        GROUP BY u.id
        HAVING score >= ?
@@ -261,6 +261,31 @@ export const getEarningsLeaderboard = async (req, res) => {
        LIMIT ?`,
       [minScore, limit]
     );
+
+    if (rows.length === 0) {
+      const [fallbackRows] = await pool.query(
+        `SELECT 
+           u.id as user_id,
+           u.user_id as public_id,
+           u.name,
+           u.profile_pic,
+           COALESCE(SUM(t.amount), 0) as score
+         FROM users u
+         JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
+         WHERE UPPER(t.type) = 'CREDIT' 
+           AND t.source NOT LIKE '%SPIN%' 
+           AND t.source NOT LIKE '%STREAK%' 
+           AND t.source NOT LIKE '%CONTEST%'
+           AND COALESCE(u.is_banned, 0) = 0 
+           AND ${dateCondition}
+         GROUP BY u.id
+         HAVING score >= 0
+         ORDER BY score DESC
+         LIMIT ?`,
+        [limit]
+      );
+      rows = fallbackRows;
+    }
 
     const rankings = rows.map((row, index) => ({
       rank: index + 1,
@@ -521,12 +546,11 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
          GREATEST(COALESCE(SUM(CASE WHEN UPPER(t.type) = 'CREDIT' AND ${dateCondition} THEN t.amount ELSE 0 END), 0), ${period === 'ALLTIME' ? 'u.balance' : '0'}) as score
        FROM users u
        LEFT JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
-       WHERE u.is_banned = FALSE 
+       WHERE COALESCE(u.is_banned, 0) = 0 
        GROUP BY u.id
-       HAVING score >= ?
+       HAVING score >= 0
        ORDER BY score DESC, u.created_at DESC
-       LIMIT 100`,
-      [minScore]
+       LIMIT 100`
     );
 
     console.log(`[Admin Leaderboard Participants] period: ${period}, players count: ${players.length}`);
