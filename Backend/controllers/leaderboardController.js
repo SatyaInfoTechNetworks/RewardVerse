@@ -257,6 +257,7 @@ export const getEarningsLeaderboard = async (req, res) => {
              AND t.source NOT LIKE '%SPIN%' 
              AND t.source NOT LIKE '%STREAK%' 
              AND t.source NOT LIKE '%CONTEST%'
+             AND t.source NOT LIKE '%BONUS%'
              AND ${dateCondition}
          ), 0) as score
        FROM users u
@@ -552,6 +553,7 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
               AND t.source NOT LIKE '%SPIN%' 
               AND t.source NOT LIKE '%STREAK%' 
               AND t.source NOT LIKE '%CONTEST%'
+              AND t.source NOT LIKE '%BONUS%'
               AND ${dateCondition}
           ), 0) as score
         FROM users u
@@ -608,22 +610,25 @@ export const distributeRewardsAdmin = async (req, res) => {
       [lb.id]
     );
 
-    // Fetch top 100 qualified users
+    const minThreshold = parseFloat(lb.minimum_score || 0);
+
+    // Fetch top qualified users for period (excluding spin, streak, contest, bonus)
     const [users] = await pool.query(
       `SELECT u.id, u.name, COALESCE(SUM(t.amount), 0) as score
        FROM users u
-       JOIN transactions t ON u.id = t.user_id
-       WHERE t.type = 'CREDIT' 
-         AND t.source NOT LIKE '%STREAK%' 
+       JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
+       WHERE UPPER(t.type) = 'CREDIT' 
          AND t.source NOT LIKE '%SPIN%' 
+         AND t.source NOT LIKE '%STREAK%' 
          AND t.source NOT LIKE '%CONTEST%'
-         AND u.is_banned = FALSE 
+         AND t.source NOT LIKE '%BONUS%'
+         AND COALESCE(u.is_banned, 0) = 0 
          AND ${dateCondition}
        GROUP BY u.id
        HAVING score >= ?
        ORDER BY score DESC
        LIMIT 100`,
-      [parseFloat(lb.minimum_score || 0)]
+      [minThreshold]
     );
 
     let winnersPaid = 0;
