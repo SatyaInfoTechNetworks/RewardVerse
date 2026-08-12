@@ -258,6 +258,8 @@ export const getEarningsLeaderboard = async (req, res) => {
              AND t.source NOT LIKE '%STREAK%' 
              AND t.source NOT LIKE '%CONTEST%'
              AND t.source NOT LIKE '%BONUS%'
+             AND t.source NOT LIKE '%REFERRAL%'
+             AND t.source NOT LIKE '%COMMISSION%'
              AND ${dateCondition}
          ), 0) as score
        FROM users u
@@ -428,7 +430,20 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
 
 export const listAdminLeaderboards = async (req, res) => {
   try {
-    const [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
+    // Automatically update any legacy REFERRAL type leaderboards to EARNINGS
+    await pool.query(
+      `UPDATE leaderboards 
+       SET name = CASE 
+             WHEN period = 'DAILY' THEN 'Daily Earnings Leaderboard'
+             WHEN period = 'WEEKLY' THEN 'Weekly Earnings Leaderboard'
+             WHEN period = 'MONTHLY' THEN 'Monthly Earnings Leaderboard'
+             ELSE 'Earnings Leaderboard'
+           END,
+           type = 'EARNINGS'
+       WHERE type = 'REFERRAL' OR name LIKE '%Referral%'`
+    );
+
+    const [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY period ASC`);
     for (const lb of leaderboards) {
       const [tiers] = await pool.query(
         `SELECT * FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
@@ -554,6 +569,8 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
               AND t.source NOT LIKE '%STREAK%' 
               AND t.source NOT LIKE '%CONTEST%'
               AND t.source NOT LIKE '%BONUS%'
+              AND t.source NOT LIKE '%REFERRAL%'
+              AND t.source NOT LIKE '%COMMISSION%'
               AND ${dateCondition}
           ), 0) as score
         FROM users u
@@ -622,6 +639,8 @@ export const distributeRewardsAdmin = async (req, res) => {
          AND t.source NOT LIKE '%STREAK%' 
          AND t.source NOT LIKE '%CONTEST%'
          AND t.source NOT LIKE '%BONUS%'
+         AND t.source NOT LIKE '%REFERRAL%'
+         AND t.source NOT LIKE '%COMMISSION%'
          AND COALESCE(u.is_banned, 0) = 0 
          AND ${dateCondition}
        GROUP BY u.id
