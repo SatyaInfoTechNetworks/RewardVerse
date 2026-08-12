@@ -808,9 +808,9 @@ export const handleGrowdeck = async (req, res) => {
       'Transaction ID': transaction_id
     });
 
-    sendNotification(internalId, "GrowDeck Reward Received! 🪙", `You received ${payout} coins from GrowDeck Playtime`).catch(console.error);
-
-    processReferralRewards(internalId, payout, '0').catch(err => console.error('GrowDeck Referral Commission error:', err.message));
+    try {
+      sendNotification(internalId, "GrowDeck Reward Received! 🪙", `You received ${payout} coins from GrowDeck Playtime`).catch(console.error);
+    } catch (_) {}
 
     return res.status(200).json({
       success: true,
@@ -820,7 +820,7 @@ export const handleGrowdeck = async (req, res) => {
       }
     });
   } catch (error) {
-    await connection.rollback();
+    try { await connection.rollback(); } catch (_) {}
     console.error('❌ [GROWDECK] Webhook error:', error);
     return res.status(200).json({
       success: true,
