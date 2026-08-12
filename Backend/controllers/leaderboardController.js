@@ -739,7 +739,51 @@ export const manageAnnouncementAdmin = async (req, res) => {
 };
 
 export const getAdminLogs = async (req, res) => {
-  res.json({ success: true, logs: [] });
+  try {
+    const [logs] = await pool.query(
+      `SELECT 
+         lr.id,
+         lr.leaderboard_id,
+         lr.user_id,
+         lr.rank,
+         lr.reward_coins,
+         lr.status,
+         lr.created_at,
+         u.name as user_name,
+         u.user_id as public_id,
+         u.email as user_email,
+         u.profile_pic,
+         COALESCE(l.name, 'Earnings Leaderboard') as leaderboard_name,
+         COALESCE(l.period, 'DAILY') as period
+       FROM leaderboard_rewards lr
+       LEFT JOIN users u ON (u.id = lr.user_id OR u.user_id = lr.user_id OR u.uid = lr.user_id)
+       LEFT JOIN leaderboards l ON l.id = lr.leaderboard_id
+       ORDER BY lr.created_at DESC
+       LIMIT 200`
+    );
+
+    const formattedLogs = logs.map(log => ({
+      id: log.id,
+      leaderboard_name: log.leaderboard_name,
+      period: log.period,
+      rank: log.rank,
+      user_name: log.user_name || 'User',
+      public_id: log.public_id || (log.user_id ? String(log.user_id).substring(0, 10) : 'user'),
+      user_email: log.user_email || 'N/A',
+      profile_pic: log.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(log.user_name || 'User'),
+      reward_coins: parseFloat(log.reward_coins || 0),
+      status: log.status || 'DISTRIBUTED',
+      created_at: log.created_at
+    }));
+
+    res.json({
+      success: true,
+      logs: formattedLogs
+    });
+  } catch (error) {
+    console.error('Error fetching admin leaderboard logs:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch leaderboard logs.' });
+  }
 };
 
 export const deleteLeaderboardAdmin = async (req, res) => {

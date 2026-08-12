@@ -100,10 +100,29 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
     fetchTopPlayers(selectedPeriod, updated);
   };
 
+  const [payoutLogs, setPayoutLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  const fetchRewardLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/logs`, { headers: resolveHeaders() });
+      const data = await res.json();
+      if (data.success && data.logs) {
+        setPayoutLogs(data.logs);
+      }
+    } catch (e) {
+      console.error('Error fetching reward logs:', e);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   useEffect(() => {
     fetchDashboardStats();
     fetchLeaderboardConfigs();
     fetchTopPlayers(selectedPeriod);
+    fetchRewardLogs();
   }, []);
 
   const handlePeriodChange = (period) => {
@@ -232,6 +251,13 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
           style={{ padding: '8px 16px', fontSize: '0.85rem' }}
         >
           Live Top 100 Players
+        </button>
+        <button
+          className={activeTab === 'logs' ? 'btn btn-primary' : 'btn btn-secondary'}
+          onClick={() => { setActiveTab('logs'); fetchRewardLogs(); }}
+          style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+        >
+          📜 Payout & Distribution History
         </button>
       </div>
 
@@ -461,6 +487,74 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
                       <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>{player.email || 'N/A'}</td>
                       <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>
                         {player.score.toLocaleString()} Coins
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 4: Payout History & Audit Logs */}
+      {activeTab === 'logs' && (
+        <div className="glass-panel" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary, #fff)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Award size={18} color="#10b981" /> Leaderboard Reward Payout History & Audit Logs
+            </h3>
+            <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: '0.78rem' }} onClick={fetchRewardLogs}>
+              <RefreshCw size={14} /> Refresh Logs
+            </button>
+          </div>
+
+          {loadingLogs ? (
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>Loading distribution logs...</p>
+          ) : payoutLogs.length === 0 ? (
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No reward payout logs recorded yet. Click "Distribute Rewards" on any active contest to credit rewards & log transactions.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)', textAlign: 'left' }}>
+                    <th style={{ padding: '10px' }}>Contest Name</th>
+                    <th style={{ padding: '10px' }}>Winner Name</th>
+                    <th style={{ padding: '10px' }}>Public Hex ID</th>
+                    <th style={{ padding: '10px' }}>Rank</th>
+                    <th style={{ padding: '10px' }}>Coins Credited</th>
+                    <th style={{ padding: '10px' }}>Status</th>
+                    <th style={{ padding: '10px' }}>Date & Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payoutLogs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#c084fc' }}>{log.leaderboard_name}</td>
+                      <td style={{ padding: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <img
+                            src={log.profile_pic || `https://ui-avatars.com/api/?name=${encodeURIComponent(log.user_name || 'User')}`}
+                            alt=""
+                            style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                          <span style={{ color: 'var(--text-primary, #fff)', fontWeight: '500' }}>{log.user_name}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px', color: '#818cf8', fontFamily: 'monospace' }}>{log.public_id}</td>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', background: 'rgba(245,158,11,0.2)', color: '#f59e0b', fontWeight: 'bold' }}>
+                          Rank #{log.rank}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px', color: '#10b981', fontWeight: 'bold' }}>+{log.reward_coins.toLocaleString()} Coins</td>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '0.75rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px', color: 'var(--text-muted, #64748b)', fontSize: '0.78rem' }}>
+                        {new Date(log.created_at).toLocaleString()}
                       </td>
                     </tr>
                   ))}
