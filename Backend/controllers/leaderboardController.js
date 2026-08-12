@@ -431,7 +431,13 @@ export const getAdminLeaderboardDashboard = async (req, res) => {
 
 export const listAdminLeaderboards = async (req, res) => {
   try {
-    // Automatically update any legacy REFERRAL type leaderboards to EARNINGS
+    // Deduplicate leaderboards table by period (keep the latest updated entry)
+    await pool.query(
+      `DELETE l1 FROM leaderboards l1
+       JOIN leaderboards l2 ON l1.period = l2.period AND (l1.created_at < l2.created_at OR (l1.created_at = l2.created_at AND l1.id < l2.id))`
+    );
+
+    // Normalize names and types to EARNINGS
     await pool.query(
       `UPDATE leaderboards 
        SET name = CASE 
@@ -440,11 +446,12 @@ export const listAdminLeaderboards = async (req, res) => {
              WHEN period = 'MONTHLY' THEN 'Monthly Earnings Leaderboard'
              ELSE 'Earnings Leaderboard'
            END,
-           type = 'EARNINGS'
-       WHERE type = 'REFERRAL' OR name LIKE '%Referral%'`
+           type = 'EARNINGS'`
     );
 
-    const [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY period ASC`);
+    const [leaderboards] = await pool.query(
+      `SELECT * FROM leaderboards WHERE period IN ('DAILY', 'WEEKLY', 'MONTHLY') ORDER BY FIELD(period, 'DAILY', 'WEEKLY', 'MONTHLY') ASC`
+    );
     for (const lb of leaderboards) {
       const [tiers] = await pool.query(
         `SELECT * FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
