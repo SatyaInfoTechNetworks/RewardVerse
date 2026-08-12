@@ -152,7 +152,14 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
   });
 };
 
-export const getAntiCheatDataAdmin = async (req, res) => {
+export const adjustPlayerScoreAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Player score adjustment stub executed.'
+  });
+};
+
+export const getAntiCheatPanelAdmin = async (req, res) => {
   res.json({
     success: true,
     anti_cheat_summary: {
@@ -166,31 +173,10 @@ export const getAntiCheatDataAdmin = async (req, res) => {
   });
 };
 
-export const getLeaderboardLogsAdmin = async (req, res) => {
+export const getCoinStatisticsAdmin = async (req, res) => {
   res.json({
     success: true,
-    logs: []
-  });
-};
-
-export const adjustPlayerScoreAdmin = async (req, res) => {
-  res.json({
-    success: true,
-    message: 'Player score adjustment stub executed.'
-  });
-};
-
-export const saveAnnouncementAdmin = async (req, res) => {
-  res.json({
-    success: true,
-    message: 'Leaderboard announcement updated stub.'
-  });
-};
-
-export const sendFcmPushAdmin = async (req, res) => {
-  res.json({
-    success: true,
-    message: 'FCM push notification stub executed.'
+    coin_stats: {}
   });
 };
 
@@ -201,7 +187,35 @@ export const distributeRewardsAdmin = async (req, res) => {
   });
 };
 
-export const archiveSeasonSnapshotAdmin = async (req, res) => {
+export const sendLeaderboardPushAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'FCM push notification stub executed.'
+  });
+};
+
+export const manageAnnouncementAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Leaderboard announcement updated stub.'
+  });
+};
+
+export const getAdminLogs = async (req, res) => {
+  res.json({
+    success: true,
+    logs: []
+  });
+};
+
+export const deleteLeaderboardAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Leaderboard contest deleted stub.'
+  });
+};
+
+export const snapshotLeaderboardSeasonAdmin = async (req, res) => {
   res.json({
     success: true,
     message: 'Season snapshot archived stub.'
@@ -215,9 +229,9 @@ export const getLeaderboardSeasonsAdmin = async (req, res) => {
   });
 };
 
-export const deleteLeaderboardAdmin = async (req, res) => {
-  res.json({
-    success: true,
-    message: 'Leaderboard contest deleted stub.'
-  });
-};
+// Aliases for compatibility
+export const getAntiCheatDataAdmin = getAntiCheatPanelAdmin;
+export const getLeaderboardLogsAdmin = getAdminLogs;
+export const sendFcmPushAdmin = sendLeaderboardPushAdmin;
+export const saveAnnouncementAdmin = manageAnnouncementAdmin;
+export const archiveSeasonSnapshotAdmin = snapshotLeaderboardSeasonAdmin;
