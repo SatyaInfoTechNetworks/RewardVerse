@@ -740,8 +740,8 @@ export const handleGrowdeck = async (req, res) => {
     const template = `${GROWDECK_SECRET_KEY}.${user_id}.${rewardTrunc}.${transaction_id}`;
     const calculatedSig = crypto.createHmac('sha256', GROWDECK_SECRET_KEY).update(template).digest('hex');
 
-    // Test callback detection (GrowDeck Test Callback button uses dummy user_id 0c8fc6f2a, 4, or placeholders)
-    const isTestCall = (user_id === '0c8fc6f2a' || user_id === '4' || user_id.includes('{') || String(reward).includes('{'));
+    // Test callback detection (GrowDeck Test Callback button uses dummy user_id starting with 0c8, 4, or placeholders)
+    const isTestCall = (user_id.startsWith('0c8') || user_id === '4' || user_id.includes('{') || String(reward).includes('{') || String(transaction_id).includes('{'));
 
     if (!isTestCall && signature && !safeCompare(signature.toLowerCase(), calculatedSig.toLowerCase())) {
       console.warn('⚠️ [GROWDECK] Signature mismatch:', { signature, calculatedSig });
