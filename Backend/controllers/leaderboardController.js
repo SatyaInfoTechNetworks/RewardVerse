@@ -135,6 +135,44 @@ export const getEarningsLeaderboard = async (req, res) => {
     const limit = 100;
     const userId = req.user?.id;
 
+    if (period === 'ALLTIME') {
+      const [rows] = await pool.query(
+        `SELECT id as user_id, user_id as public_id, name, profile_pic, balance as score
+         FROM users WHERE is_banned = FALSE AND balance > 0
+         ORDER BY balance DESC LIMIT 100`
+      );
+      const rankings = rows.map((row, index) => ({
+        rank: index + 1,
+        user_id: row.public_id || (row.user_id ? row.user_id.substring(0, 8) : 'user'),
+        name: row.name || 'Anonymous User',
+        profile_pic: row.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.name || 'User'),
+        total_earnings: parseFloat(row.score)
+      }));
+
+      let myRankInfo = null;
+      if (userId) {
+        const myIndex = rankings.findIndex(r => r.user_id === userId);
+        if (myIndex !== -1) {
+          myRankInfo = rankings[myIndex];
+        } else {
+          const [myUser] = await pool.query(`SELECT balance FROM users WHERE id = ?`, [userId]);
+          const myScore = parseFloat(myUser[0]?.balance) || 0;
+          const [rankRes] = await pool.query(`SELECT COUNT(*) + 1 as rank FROM users WHERE balance > ? AND is_banned = FALSE`, [myScore]);
+          myRankInfo = { rank: rankRes[0]?.rank || 0, name: req.user?.name || 'You', total_earnings: myScore };
+        }
+      }
+
+      return res.json({
+        success: true,
+        period: 'ALLTIME',
+        leaderboard: { name: 'All Time Leaderboard', period: 'ALLTIME', reward_pool: 0, minimum_score: 0 },
+        reward_tiers: [],
+        rankings,
+        data: rankings,
+        user_rank: myRankInfo
+      });
+    }
+
     let dateCondition = "DATE(t.created_at) = CURRENT_DATE()";
     if (period === 'WEEKLY') {
       dateCondition = "YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
