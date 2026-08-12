@@ -260,6 +260,7 @@ export const getEarningsLeaderboard = async (req, res) => {
              AND t.source NOT LIKE '%BONUS%'
              AND t.source NOT LIKE '%REFERRAL%'
              AND t.source NOT LIKE '%COMMISSION%'
+             AND t.source NOT LIKE '%LEADERBOARD%'
              AND ${dateCondition}
          ), 0) as score
        FROM users u
@@ -515,6 +516,13 @@ export const saveLeaderboardConfigAdmin = async (req, res) => {
 export const getLeaderboardParticipantsAdmin = async (req, res) => {
   try {
     const period = (req.query.period || 'DAILY').toUpperCase();
+    const excludeSpin = req.query.exclude_spin !== 'false';
+    const excludeStreak = req.query.exclude_streak !== 'false';
+    const excludeContest = req.query.exclude_contest !== 'false';
+    const excludeBonus = req.query.exclude_bonus !== 'false';
+    const excludeReferral = req.query.exclude_referral !== 'false';
+    const excludeLeaderboard = req.query.exclude_leaderboard !== 'false';
+
     let dateCondition = "DATE(t.created_at) = CURRENT_DATE()";
     let minScore = 0;
 
@@ -530,6 +538,16 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
       const [lbs] = await pool.query(`SELECT minimum_score FROM leaderboards WHERE period = ? LIMIT 1`, [period]);
       if (lbs.length > 0) minScore = parseFloat(lbs[0].minimum_score) || 0;
     }
+
+    let exclusions = [];
+    if (excludeSpin) exclusions.push("t.source NOT LIKE '%SPIN%'");
+    if (excludeStreak) exclusions.push("t.source NOT LIKE '%STREAK%'");
+    if (excludeContest) exclusions.push("t.source NOT LIKE '%CONTEST%'");
+    if (excludeBonus) exclusions.push("t.source NOT LIKE '%BONUS%'");
+    if (excludeReferral) exclusions.push("t.source NOT LIKE '%REFERRAL%' AND t.source NOT LIKE '%COMMISSION%'");
+    if (excludeLeaderboard) exclusions.push("t.source NOT LIKE '%LEADERBOARD%'");
+
+    const exclusionSql = exclusions.length > 0 ? "AND " + exclusions.join(" AND ") : "";
 
     let query = '';
     if (period === 'ALLTIME') {
@@ -565,12 +583,7 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
             SELECT SUM(t.amount) FROM transactions t 
             WHERE (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid) 
               AND UPPER(t.type) = 'CREDIT' 
-              AND t.source NOT LIKE '%SPIN%' 
-              AND t.source NOT LIKE '%STREAK%' 
-              AND t.source NOT LIKE '%CONTEST%'
-              AND t.source NOT LIKE '%BONUS%'
-              AND t.source NOT LIKE '%REFERRAL%'
-              AND t.source NOT LIKE '%COMMISSION%'
+              ${exclusionSql}
               AND ${dateCondition}
           ), 0) as score
         FROM users u
@@ -641,6 +654,7 @@ export const distributeRewardsAdmin = async (req, res) => {
          AND t.source NOT LIKE '%BONUS%'
          AND t.source NOT LIKE '%REFERRAL%'
          AND t.source NOT LIKE '%COMMISSION%'
+         AND t.source NOT LIKE '%LEADERBOARD%'
          AND COALESCE(u.is_banned, 0) = 0 
          AND ${dateCondition}
        GROUP BY u.id

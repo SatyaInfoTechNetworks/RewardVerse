@@ -58,10 +58,28 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
     }
   };
 
-  const fetchTopPlayers = async (period) => {
+  const [filters, setFilters] = useState({
+    excludeSpin: true,
+    excludeStreak: true,
+    excludeContest: true,
+    excludeBonus: true,
+    excludeReferral: true,
+    excludeLeaderboard: true
+  });
+
+  const fetchTopPlayers = async (period, customFilters = filters) => {
     setLoading(true);
     try {
-      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/participants?period=${period}`, { headers: resolveHeaders() });
+      const queryParams = new URLSearchParams({
+        period,
+        exclude_spin: customFilters.excludeSpin,
+        exclude_streak: customFilters.excludeStreak,
+        exclude_contest: customFilters.excludeContest,
+        exclude_bonus: customFilters.excludeBonus,
+        exclude_referral: customFilters.excludeReferral,
+        exclude_leaderboard: customFilters.excludeLeaderboard
+      });
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/participants?${queryParams.toString()}`, { headers: resolveHeaders() });
       const data = await res.json();
       if (data.success && data.players) {
         setPlayers(data.players);
@@ -76,6 +94,12 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
     }
   };
 
+  const handleFilterToggle = (key, value) => {
+    const updated = { ...filters, [key]: value };
+    setFilters(updated);
+    fetchTopPlayers(selectedPeriod, updated);
+  };
+
   useEffect(() => {
     fetchDashboardStats();
     fetchLeaderboardConfigs();
@@ -84,7 +108,7 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
 
   const handlePeriodChange = (period) => {
     setSelectedPeriod(period);
-    fetchTopPlayers(period);
+    fetchTopPlayers(period, filters);
   };
 
   const handleSaveConfig = async (config) => {
@@ -366,6 +390,32 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
               style={{ width: '220px', padding: '6px 12px', fontSize: '0.8rem' }}
             />
           </div>
+
+          {selectedPeriod !== 'ALLTIME' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '16px', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary, #94a3b8)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Filter size={14} /> Exclude Sources:
+              </span>
+              <label style={{ fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #cbd5e1)' }}>
+                <input type="checkbox" checked={filters.excludeSpin} onChange={(e) => handleFilterToggle('excludeSpin', e.target.checked)} /> Spins
+              </label>
+              <label style={{ fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #cbd5e1)' }}>
+                <input type="checkbox" checked={filters.excludeStreak} onChange={(e) => handleFilterToggle('excludeStreak', e.target.checked)} /> Streaks
+              </label>
+              <label style={{ fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #cbd5e1)' }}>
+                <input type="checkbox" checked={filters.excludeContest} onChange={(e) => handleFilterToggle('excludeContest', e.target.checked)} /> Contests
+              </label>
+              <label style={{ fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #cbd5e1)' }}>
+                <input type="checkbox" checked={filters.excludeBonus} onChange={(e) => handleFilterToggle('excludeBonus', e.target.checked)} /> Bonuses
+              </label>
+              <label style={{ fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #cbd5e1)' }}>
+                <input type="checkbox" checked={filters.excludeReferral} onChange={(e) => handleFilterToggle('excludeReferral', e.target.checked)} /> Referrals
+              </label>
+              <label style={{ fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary, #cbd5e1)' }}>
+                <input type="checkbox" checked={filters.excludeLeaderboard} onChange={(e) => handleFilterToggle('excludeLeaderboard', e.target.checked)} /> Leaderboard Prizes
+              </label>
+            </div>
+          )}
 
           {loading ? (
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>Loading players...</p>
