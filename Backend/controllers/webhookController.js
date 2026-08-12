@@ -723,7 +723,7 @@ export const handleOffermaru = async (req, res) => {
 export const handleGrowdeck = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const GROWDECK_SECRET_KEY = "30a11d6e8a666dd4bf5d6a4ab0a899";
+    const GROWDECK_SECRET_KEY = process.env.GROWDECK_POSTBACK_SECRET_KEY || "ebbf66af23272124d677f6e0388245";
     const { user_id, reward, transaction_id, signature, campaign = 'GrowDeck Playtime', offer_id = 0, click_ip = '', gaid = '' } = req.query;
 
     if (!user_id || !transaction_id || !signature) {

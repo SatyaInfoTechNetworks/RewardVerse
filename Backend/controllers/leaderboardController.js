@@ -1,1338 +1,223 @@
-import pool from '../db.js';
-import { v4 as uuidv4 } from 'uuid';
-import { sendNotification, broadcastNotification } from '../utils/notifications.js';
-
 /**
- * Helper: Calculate Dynamic Prize Pool
+ * Leaderboard Controller (Clean Starter Stubs)
+ * Ready for fresh implementation.
  */
-const calculateDynamicPool = (basePool, growthPerUser, maxCap, userCount) => {
-  const base = parseFloat(basePool) || 0;
-  const growthRate = parseFloat(growthPerUser) || 0;
-  const cap = parseFloat(maxCap) || 100000;
-  const dynamicBonus = userCount * growthRate;
-  return Math.min(base + dynamicBonus, cap);
-};
-
-/**
- * Helper: Period & Contest Specific Default Prize Pools & Reward Tiers
- */
-const getDefaultContestDetails = (type, period) => {
-  const p = (period || 'DAILY').toUpperCase();
-  const t = (type || 'EARNINGS').toUpperCase();
-
-  if (t === 'EARNINGS') {
-    if (p === 'DAILY') {
-      return {
-        name: 'Daily Earnings Leaderboard',
-        prize_pool_coins: 5000,
-        max_winners: 20,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 1500, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 1000, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 500, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 200, display_label: 'Rank 4-10' },
-          { start_rank: 11, end_rank: 20, reward_coins: 60, display_label: 'Rank 11-20' }
-        ]
-      };
-    } else if (p === 'WEEKLY') {
-      return {
-        name: 'Weekly Earnings Leaderboard',
-        prize_pool_coins: 15000,
-        max_winners: 30,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 4500, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 3000, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 1500, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 500, display_label: 'Rank 4-10' },
-          { start_rank: 11, end_rank: 30, reward_coins: 125, display_label: 'Rank 11-30' }
-        ]
-      };
-    } else if (p === 'MONTHLY') {
-      return {
-        name: 'Monthly Earnings Leaderboard',
-        prize_pool_coins: 42500,
-        max_winners: 50,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 12500, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 8500, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 4250, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 1500, display_label: 'Rank 4-10' },
-          { start_rank: 11, end_rank: 50, reward_coins: 170, display_label: 'Rank 11-50' }
-        ]
-      };
-    } else {
-      return {
-        name: 'All Time Earnings Leaderboard',
-        prize_pool_coins: 100000,
-        max_winners: 100,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 30000, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 20000, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 10000, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 3500, display_label: 'Rank 4-10' },
-          { start_rank: 11, end_rank: 100, reward_coins: 170, display_label: 'Rank 11-100' }
-        ]
-      };
-    }
-  } else {
-    if (p === 'DAILY') {
-      return {
-        name: 'Daily Referral Leaderboard',
-        prize_pool_coins: 3000,
-        max_winners: 10,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 1000, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 600, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 400, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 140, display_label: 'Rank 4-10' }
-        ]
-      };
-    } else if (p === 'WEEKLY') {
-      return {
-        name: 'Weekly Referral Leaderboard',
-        prize_pool_coins: 10000,
-        max_winners: 15,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 3000, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 2000, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 1000, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 15, reward_coins: 330, display_label: 'Rank 4-15' }
-        ]
-      };
-    } else if (p === 'MONTHLY') {
-      return {
-        name: 'Monthly Referral Leaderboard',
-        prize_pool_coins: 25000,
-        max_winners: 25,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 7500, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 5000, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 2500, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 1000, display_label: 'Rank 4-10' },
-          { start_rank: 11, end_rank: 25, reward_coins: 200, display_label: 'Rank 11-25' }
-        ]
-      };
-    } else {
-      return {
-        name: 'All Time Referral Leaderboard',
-        prize_pool_coins: 50000,
-        max_winners: 50,
-        reward_tiers: [
-          { start_rank: 1, end_rank: 1, reward_coins: 15000, display_label: 'Rank 1' },
-          { start_rank: 2, end_rank: 2, reward_coins: 10000, display_label: 'Rank 2' },
-          { start_rank: 3, end_rank: 3, reward_coins: 5000, display_label: 'Rank 3' },
-          { start_rank: 4, end_rank: 10, reward_coins: 2000, display_label: 'Rank 4-10' },
-          { start_rank: 11, end_rank: 50, reward_coins: 150, display_label: 'Rank 11-50' }
-        ]
-      };
-    }
-  }
-};
 
 // ==========================================
 // USER API ENDPOINTS
 // ==========================================
 
 /**
- * GET /api/leaderboards/banner (or /api/leaderboards)
- * Returns Leaderboard Home Banner configuration & user summary
+ * GET /api/leaderboards/banner
  */
 export const getHomeLeaderboardBanner = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-
-    // Get Active Leaderboards
-    const [leaderboards] = await pool.query(
-      `SELECT * FROM leaderboards WHERE is_active = TRUE AND show_on_home = TRUE ORDER BY created_at ASC`
-    );
-
-    // Get current month season
-    const now = new Date();
-    const seasonMonthYear = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    const timeRemainingMs = Math.max(0, endOfMonth.getTime() - now.getTime());
-    const daysRemaining = Math.floor(timeRemainingMs / (1000 * 60 * 60 * 24));
-    const hoursRemaining = Math.floor((timeRemainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-
-    // Calculate overall dynamic pool across active leaderboards
-    let totalPrizePool = 0;
-    const activeLbCount = leaderboards.length || 6;
-
-    // Count qualified participants
-    const [partCount] = await pool.query(`SELECT COUNT(DISTINCT user_id) as total FROM leaderboard_entries WHERE qualified = TRUE`);
-    const totalParticipants = partCount[0]?.total || 0;
-
-    for (const lb of leaderboards) {
-      if (lb.dynamic_pool_enabled) {
-        totalPrizePool += calculateDynamicPool(lb.reward_pool, lb.pool_growth_per_user, lb.max_pool_cap, totalParticipants);
-      } else {
-        totalPrizePool += parseFloat(lb.reward_pool) || 0;
+  res.json({
+    success: true,
+    banner: {
+      title: '🏆 LEADERBOARD',
+      current_season: 'Active',
+      time_remaining_formatted: '0 Days',
+      time_remaining_ms: 0,
+      user_rank: 'Unranked',
+      user_score: 0,
+      coins_needed_for_top_10: 0,
+      prize_pool_coins: 0,
+      prize_pool_formatted: '0 Coins',
+      active_participants: 0,
+      announcement: {
+        title: '🏆 Leaderboard System',
+        message: 'Leaderboard is ready for fresh setup.'
       }
     }
-
-    // Default dynamic pool fallback if no configured leaderboards
-    if (totalPrizePool === 0) totalPrizePool = 25000 + (totalParticipants * 10);
-
-    // Get Authenticated User Rank & Status if logged in
-    let userRank = null;
-    let userScore = 0;
-    let coinsNeededForTop10 = 0;
-
-    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
-
-    if (userId) {
-      // User's monthly earnings rank
-      const [userEntries] = await pool.query(
-        `SELECT le.score, le.\`rank\` 
-         FROM leaderboard_entries le
-         JOIN leaderboards l ON le.leaderboard_id = l.id
-         WHERE le.user_id = ? AND l.period = 'MONTHLY' AND l.type = 'EARNINGS' AND le.is_disqualified = FALSE
-         LIMIT 1`,
-        [userId]
-      );
-
-      if (userEntries.length > 0) {
-        userRank = userEntries[0].rank || null;
-        userScore = parseFloat(userEntries[0].score) || 0;
-      } else {
-        // Calculate user Offerwall & Survey earnings this month
-        const [userTx] = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) as total FROM transactions t
-           WHERE user_id = ? AND ${offerwallAndSurveyCondition} AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
-          [userId]
-        );
-        userScore = parseFloat(userTx[0]?.total) || 0;
-      }
-
-      // Find score of 10th rank player
-      const [top10th] = await pool.query(
-        `SELECT score FROM (
-           SELECT COALESCE(SUM(amount), 0) as score
-           FROM transactions t
-           WHERE ${offerwallAndSurveyCondition} AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
-           GROUP BY user_id
-           ORDER BY score DESC
-           LIMIT 10
-         ) t ORDER BY score ASC LIMIT 1`
-      );
-
-      const target10thScore = top10th.length > 0 ? parseFloat(top10th[0].score) : 1000;
-      if (userScore < target10thScore) {
-        coinsNeededForTop10 = Math.ceil(target10thScore - userScore);
-      } else {
-        coinsNeededForTop10 = 0;
-      }
-    }
-
-    // Announcement text
-    const [announcements] = await pool.query(
-      `SELECT title, message, ends_at FROM leaderboard_announcements WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1`
-    );
-
-    res.json({
-      success: true,
-      banner: {
-        title: '🏆 TOP LEADERBOARDS',
-        current_season: seasonMonthYear,
-        time_remaining_formatted: `${daysRemaining} Days ${hoursRemaining} Hours`,
-        time_remaining_ms: timeRemainingMs,
-        user_rank: userRank ? `#${userRank}` : 'Unranked',
-        user_score: userScore,
-        coins_needed_for_top_10: coinsNeededForTop10,
-        prize_pool_coins: Math.round(totalPrizePool),
-        prize_pool_formatted: `${Math.round(totalPrizePool).toLocaleString()} Coins`,
-        active_participants: totalParticipants,
-        announcement: announcements[0] || {
-          title: `🏆 ${seasonMonthYear} Leaderboard is LIVE!`,
-          message: 'Top 50 users win FREE Coins. Keep earning daily!'
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching leaderboard home banner:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch leaderboard banner info.' });
-  }
+  });
 };
 
 /**
  * GET /api/leaderboards/earnings
- * Returns ranked earnings leaderboard for specified period ('daily', 'weekly', 'monthly', 'all_time')
  */
 export const getEarningsLeaderboard = async (req, res) => {
-  try {
-    const period = (req.query.period || 'monthly').toUpperCase();
-    const limit = parseInt(req.query.limit || '50');
-    const userId = req.user?.id;
-
-    let dateCondition = "1=1";
-    if (period === 'DAILY') {
-      dateCondition = "DATE(t.created_at) = CURRENT_DATE()";
-    } else if (period === 'WEEKLY') {
-      dateCondition = "YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
-    } else if (period === 'MONTHLY') {
-      dateCondition = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
-    }
-
-    // Exclude Non-Offerwall sources (Daily Streak, Spin Wheel, Lucky Draw, Referral, Ads, Lifafa)
-    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
-
-    // Fetch Top Earners based on Offerwall & Survey transactions ledger
-    const [rows] = await pool.query(
-      `SELECT 
-         u.id as user_id,
-         u.user_id as public_id,
-         u.name,
-         u.profile_pic,
-         COALESCE(SUM(t.amount), 0) as score,
-         COUNT(DISTINCT CASE WHEN t.source = 'OFFER' THEN t.id END) as offers_completed
-       FROM users u
-       JOIN transactions t ON u.id = t.user_id
-       WHERE ${offerwallAndSurveyCondition} AND u.is_banned = FALSE AND ${dateCondition}
-       GROUP BY u.id
-       ORDER BY CAST(score AS DECIMAL(15,2)) DESC
-       LIMIT ?`,
-      [limit]
-    );
-
-    const rankings = rows.map((row, index) => ({
-      rank: index + 1,
-      user_id: row.public_id || row.user_id.substring(0, 8),
-      name: row.name || 'Anonymous User',
-      profile_pic: row.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.name || 'User'),
-      score: parseFloat(row.score),
-      offers_completed: row.offers_completed
-    }));
-
-    // Find authenticated user position
-    let myRankInfo = null;
-    if (userId) {
-      const myIndex = rankings.findIndex(r => r.user_id === userId || r.public_id === userId);
-      if (myIndex !== -1) {
-        myRankInfo = rankings[myIndex];
-      } else {
-        const [myScoreRes] = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t WHERE user_id = ? AND ${offerwallAndSurveyCondition} AND ${dateCondition}`,
-          [userId]
-        );
-        const myScore = parseFloat(myScoreRes[0]?.score) || 0;
-        
-        // Count how many users have higher score
-        const [rankRes] = await pool.query(
-          `SELECT COUNT(DISTINCT user_id) + 1 as rank FROM (
-             SELECT user_id, SUM(amount) as total FROM transactions t 
-             WHERE ${offerwallAndSurveyCondition} AND ${dateCondition}
-             GROUP BY user_id HAVING total > ?
-           ) higher`,
-          [myScore]
-        );
-
-        myRankInfo = {
-          rank: rankRes[0]?.rank || 'Unranked',
-          score: myScore
-        };
-      }
-    }
-
-    // Fetch matching leaderboard contest metadata & tiers from database
-    const [lbs] = await pool.query(
-      `SELECT * FROM leaderboards WHERE type = 'EARNINGS' AND period = ? AND status = 'ACTIVE' LIMIT 1`,
-      [period]
-    );
-
-    const defaultDetails = getDefaultContestDetails('EARNINGS', period);
-    let leaderboardInfo = null;
-    let rewardTiers = [];
-
-    if (lbs.length > 0) {
-      const lb = lbs[0];
-
-      const [partCount] = await pool.query(`SELECT COUNT(*) as total FROM users`);
-      const totalParticipants = partCount[0]?.total || 0;
-      let calculatedPool = parseFloat(lb.reward_pool) || 0;
-
-      if (lb.dynamic_pool_enabled) {
-        calculatedPool = calculateDynamicPool(lb.reward_pool, lb.pool_growth_per_user, lb.max_pool_cap, totalParticipants);
-      }
-
-      leaderboardInfo = {
-        id: lb.id,
-        name: lb.name,
-        type: lb.type,
-        period: lb.period,
-        base_reward_pool: parseFloat(lb.reward_pool),
-        prize_pool_coins: Math.round(calculatedPool),
-        max_winners: lb.max_winners,
-        minimum_score: parseFloat(lb.minimum_score),
-        start_date: lb.start_date,
-        end_date: lb.end_date
-      };
-
-      const [tiers] = await pool.query(
-        `SELECT start_rank, end_rank, reward_coins FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
-        [lb.id]
-      );
-
-      if (tiers.length > 0) {
-        rewardTiers = tiers.map(t => ({
-          start_rank: t.start_rank,
-          end_rank: t.end_rank,
-          reward_coins: parseFloat(t.reward_coins),
-          display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
-        }));
-      } else {
-        rewardTiers = defaultDetails.reward_tiers;
-      }
-    } else {
-      leaderboardInfo = {
-        name: defaultDetails.name,
-        type: 'EARNINGS',
-        period,
-        prize_pool_coins: defaultDetails.prize_pool_coins,
-        max_winners: defaultDetails.max_winners
-      };
-      rewardTiers = defaultDetails.reward_tiers;
-    }
-
-    res.json({
-      success: true,
+  const period = (req.query.period || 'monthly').toUpperCase();
+  res.json({
+    success: true,
+    period,
+    leaderboard: {
+      name: 'Earnings Leaderboard',
+      type: 'EARNINGS',
       period,
-      leaderboard: leaderboardInfo,
-      reward_tiers: rewardTiers,
-      rankings,
-      my_rank: myRankInfo
-    });
-  } catch (error) {
-    console.error('Error fetching earnings leaderboard:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch earnings leaderboard.' });
-  }
+      prize_pool_coins: 0,
+      max_winners: 10
+    },
+    reward_tiers: [],
+    rankings: [],
+    my_rank: null
+  });
 };
 
 /**
  * GET /api/leaderboards/referrals
- * Returns ranked referral leaderboard for specified period ('daily', 'weekly', 'monthly', 'all_time')
  */
 export const getReferralLeaderboard = async (req, res) => {
-  try {
-    const period = (req.query.period || 'monthly').toUpperCase();
-    const limit = parseInt(req.query.limit || '50');
-    const userId = req.user?.id;
-
-    let dateCondition = "1=1";
-    if (period === 'DAILY') {
-      dateCondition = "DATE(ru.created_at) = CURRENT_DATE()";
-    } else if (period === 'WEEKLY') {
-      dateCondition = "YEARWEEK(ru.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
-    } else if (period === 'MONTHLY') {
-      dateCondition = "MONTH(ru.created_at) = MONTH(CURRENT_DATE()) AND YEAR(ru.created_at) = YEAR(CURRENT_DATE())";
-    }
-
-    const [rows] = await pool.query(
-      `SELECT 
-         u.id as user_id,
-         u.user_id as public_id,
-         u.name,
-         u.profile_pic,
-         COUNT(ru.id) as referral_count,
-         COALESCE(SUM(t.amount), 0) as referral_earnings
-       FROM users u
-       JOIN referral_uses ru ON u.id = ru.referrer_id
-       LEFT JOIN transactions t ON u.id = t.user_id AND t.source = 'REFERRAL'
-       WHERE u.is_banned = FALSE AND ${dateCondition}
-       GROUP BY u.id
-       ORDER BY referral_count DESC, referral_earnings DESC
-       LIMIT ?`,
-      [limit]
-    );
-
-    const rankings = rows.map((row, index) => ({
-      rank: index + 1,
-      user_id: row.public_id || row.user_id.substring(0, 8),
-      name: row.name || 'Anonymous Referrer',
-      profile_pic: row.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.name || 'User'),
-      referrals: row.referral_count,
-      referral_earnings: parseFloat(row.referral_earnings)
-    }));
-
-    // Fetch matching referral leaderboard contest metadata & tiers from database
-    const [lbs] = await pool.query(
-      `SELECT * FROM leaderboards WHERE type = 'REFERRAL' AND period = ? AND status = 'ACTIVE' LIMIT 1`,
-      [period]
-    );
-
-    const defaultDetails = getDefaultContestDetails('REFERRAL', period);
-    let leaderboardInfo = null;
-    let rewardTiers = [];
-
-    if (lbs.length > 0) {
-      const lb = lbs[0];
-
-      const [partCount] = await pool.query(`SELECT COUNT(*) as total FROM users`);
-      const totalParticipants = partCount[0]?.total || 0;
-      let calculatedPool = parseFloat(lb.reward_pool) || 0;
-
-      if (lb.dynamic_pool_enabled) {
-        calculatedPool = calculateDynamicPool(lb.reward_pool, lb.pool_growth_per_user, lb.max_pool_cap, totalParticipants);
-      }
-
-      leaderboardInfo = {
-        id: lb.id,
-        name: lb.name,
-        type: lb.type,
-        period: lb.period,
-        base_reward_pool: parseFloat(lb.reward_pool),
-        prize_pool_coins: Math.round(calculatedPool),
-        max_winners: lb.max_winners,
-        minimum_referrals: lb.minimum_referrals,
-        start_date: lb.start_date,
-        end_date: lb.end_date
-      };
-
-      const [tiers] = await pool.query(
-        `SELECT start_rank, end_rank, reward_coins FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
-        [lb.id]
-      );
-
-      if (tiers.length > 0) {
-        rewardTiers = tiers.map(t => ({
-          start_rank: t.start_rank,
-          end_rank: t.end_rank,
-          reward_coins: parseFloat(t.reward_coins),
-          display_label: t.start_rank === t.end_rank ? `Rank ${t.start_rank}` : `Rank ${t.start_rank}-${t.end_rank}`
-        }));
-      } else {
-        rewardTiers = defaultDetails.reward_tiers;
-      }
-    } else {
-      leaderboardInfo = {
-        name: defaultDetails.name,
-        type: 'REFERRAL',
-        period,
-        prize_pool_coins: defaultDetails.prize_pool_coins,
-        max_winners: defaultDetails.max_winners
-      };
-      rewardTiers = defaultDetails.reward_tiers;
-    }
-
-    res.json({
-      success: true,
+  const period = (req.query.period || 'monthly').toUpperCase();
+  res.json({
+    success: true,
+    period,
+    leaderboard: {
+      name: 'Referral Leaderboard',
+      type: 'REFERRAL',
       period,
-      leaderboard: leaderboardInfo,
-      reward_tiers: rewardTiers,
-      rankings
-    });
-  } catch (error) {
-    console.error('Error fetching referral leaderboard:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch referral leaderboard.' });
-  }
+      prize_pool_coins: 0,
+      max_winners: 10
+    },
+    reward_tiers: [],
+    rankings: [],
+    my_rank: null
+  });
 };
 
 /**
  * GET /api/leaderboards/me
- * Authenticated user profile stats across daily, weekly, monthly periods
  */
 export const getUserLeaderboardProfile = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
-
-    // Fetch user basic profile & lifetime stats
-    const [users] = await pool.query(
-      `SELECT u.id, u.user_id, u.name, u.email, u.balance, u.profile_pic, u.created_at,
-              COALESCE(SUM(CASE WHEN ${offerwallAndSurveyCondition} THEN t.amount ELSE 0 END), 0) as lifetime_coins
-       FROM users u
-       LEFT JOIN transactions t ON u.id = t.user_id
-       WHERE u.id = ?
-       GROUP BY u.id, u.user_id, u.name, u.email, u.balance, u.profile_pic, u.created_at`,
-      [userId]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({ success: false, message: 'User profile not found.' });
+  res.json({
+    success: true,
+    profile: {
+      uid: req.user?.id || 'user',
+      name: req.user?.name || 'User',
+      email: req.user?.email || '',
+      profile_pic: null,
+      current_coins: 0,
+      lifetime_coins: 0,
+      earnings: { daily: 0, weekly: 0, monthly: 0 },
+      referral_count: 0,
+      offers_completed: 0
     }
-
-    const user = users[0];
-
-    // Earnings per period (Offerwall & Survey only)
-    const [earningsRes] = await pool.query(
-      `SELECT 
-         COALESCE(SUM(CASE WHEN DATE(t.created_at) = CURRENT_DATE() THEN t.amount ELSE 0 END), 0) as daily,
-         COALESCE(SUM(CASE WHEN YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1) THEN t.amount ELSE 0 END), 0) as weekly,
-         COALESCE(SUM(CASE WHEN MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE()) THEN t.amount ELSE 0 END), 0) as monthly
-       FROM transactions t
-       WHERE t.user_id = ? AND ${offerwallAndSurveyCondition}`,
-      [userId]
-    );
-
-    // Referrals count
-    const [refCount] = await pool.query(`SELECT COUNT(*) as total FROM referral_uses WHERE referrer_id = ?`, [userId]);
-
-    // Offers completed count
-    const [offersCount] = await pool.query(`SELECT COUNT(*) as total FROM user_offer_progress WHERE user_id = ? AND status = 'COMPLETED'`, [userId]);
-
-    res.json({
-      success: true,
-      profile: {
-        uid: user.user_id || user.id.substring(0, 8),
-        name: user.name,
-        email: user.email,
-        profile_pic: user.profile_pic,
-        current_coins: parseFloat(user.balance),
-        lifetime_coins: parseFloat(user.lifetime_coins),
-        earnings: earningsRes[0],
-        referral_count: refCount[0]?.total || 0,
-        offers_completed: offersCount[0]?.total || 0
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching user leaderboard profile:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch user leaderboard profile.' });
-  }
+  });
 };
 
 /**
  * GET /api/leaderboards/history
- * Returns past winner history
  */
 export const getLeaderboardHistory = async (req, res) => {
-  try {
-    const [history] = await pool.query(
-      `SELECT lr.id, lr.\`rank\`, lr.reward_coins, lr.status, lr.rewarded_at,
-              u.name as winner_name, u.profile_pic, l.name as leaderboard_name, l.period, l.type
-       FROM leaderboard_rewards lr
-       JOIN users u ON lr.user_id = u.id
-       JOIN leaderboards l ON lr.leaderboard_id = l.id
-       ORDER BY lr.rewarded_at DESC
-       LIMIT 100`
-    );
-
-    res.json({
-      success: true,
-      history
-    });
-  } catch (error) {
-    console.error('Error fetching leaderboard history:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch leaderboard history.' });
-  }
+  res.json({
+    success: true,
+    history: []
+  });
 };
-
 
 // ==========================================
 // ADMINISTRATIVE API ENDPOINTS
 // ==========================================
 
-/**
- * GET /api/admin/leaderboard/dashboard
- * Overview summary cards and stats
- */
 export const getAdminLeaderboardDashboard = async (req, res) => {
-  try {
-    // 1. Active Leaderboards count
-    const [actLb] = await pool.query(`SELECT COUNT(*) as total FROM leaderboards WHERE status = 'ACTIVE'`);
-
-    // 2. Real Participants count across platform
-    const [partCount] = await pool.query(`SELECT COUNT(*) as total FROM users`);
-
-    // 3. Dynamic Prize Pool Sum
-    const [lbs] = await pool.query(`SELECT reward_pool, dynamic_pool_enabled, pool_growth_per_user, max_pool_cap FROM leaderboards WHERE status = 'ACTIVE'`);
-    let totalPrizePool = 0;
-    const participants = partCount[0]?.total || 0;
-    lbs.forEach(lb => {
-      if (lb.dynamic_pool_enabled) {
-        totalPrizePool += calculateDynamicPool(lb.reward_pool, lb.pool_growth_per_user, lb.max_pool_cap, participants);
-      } else {
-        totalPrizePool += parseFloat(lb.reward_pool) || 0;
-      }
-    });
-
-    // 4. Rewards Pending
-    const [pendingRes] = await pool.query(`SELECT COUNT(*) as total FROM leaderboard_rewards WHERE status = 'PENDING'`);
-
-    // 5. Rewards Distributed
-    const [distRes] = await pool.query(`SELECT COALESCE(SUM(reward_coins), 0) as total_coins, COUNT(*) as total_rewards FROM leaderboard_rewards`);
-
-    // Current Season
-    const now = new Date();
-    const currentSeason = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
-    res.json({
-      success: true,
-      stats: {
-        active_leaderboards: actLb[0]?.total || 0,
-        participants: participants || 0,
-        prize_pool_coins: Math.round(totalPrizePool) || 0,
-        rewards_pending: pendingRes[0]?.total || 0,
-        rewards_distributed: distRes[0]?.total_rewards || 0,
-        total_reward_coins_given: parseFloat(distRes[0]?.total_coins) || 0,
-        current_season: currentSeason
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching admin leaderboard dashboard:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch admin leaderboard dashboard.' });
-  }
+  res.json({
+    success: true,
+    stats: {
+      active_leaderboards: 0,
+      participants: 0,
+      prize_pool_coins: 0,
+      rewards_pending: 0,
+      rewards_distributed: 0,
+      total_reward_coins_given: 0,
+      current_season: 'New Season'
+    }
+  });
 };
 
-/**
- * GET /api/admin/leaderboard/list
- * Returns all configured leaderboards with dynamic tiers
- */
 export const listAdminLeaderboards = async (req, res) => {
-  try {
-    const [leaderboards] = await pool.query(`SELECT * FROM leaderboards ORDER BY created_at DESC`);
-
-    // Fetch tiers for each leaderboard
-    for (const lb of leaderboards) {
-      const [tiers] = await pool.query(
-        `SELECT * FROM leaderboard_reward_tiers WHERE leaderboard_id = ? ORDER BY start_rank ASC`,
-        [lb.id]
-      );
-      lb.tiers = tiers;
-    }
-
-    res.json({
-      success: true,
-      leaderboards
-    });
-  } catch (error) {
-    console.error('Error listing admin leaderboards:', error);
-    res.status(500).json({ success: false, message: 'Failed to list leaderboards.' });
-  }
+  res.json({
+    success: true,
+    leaderboards: []
+  });
 };
 
-/**
- * POST /api/admin/leaderboard/save
- * Create or update leaderboard setting & dynamic tier builder rules
- */
 export const saveLeaderboardConfigAdmin = async (req, res) => {
-  try {
-    const {
-      id,
-      name,
-      type, // 'EARNINGS' or 'REFERRAL'
-      period, // 'DAILY', 'WEEKLY', 'MONTHLY', 'ALL_TIME'
-      minimum_score,
-      minimum_referrals,
-      reward_pool,
-      dynamic_pool_enabled,
-      pool_growth_per_user,
-      max_pool_cap,
-      max_winners,
-      start_date,
-      end_date,
-      auto_reward,
-      show_on_home,
-      status,
-      tiers // Array of { start_rank, end_rank, reward_coins }
-    } = req.body;
-
-    let lbId = id;
-
-    if (lbId) {
-      // Update existing leaderboard
-      await pool.query(
-        `UPDATE leaderboards SET
-           name = ?, type = ?, period = ?, minimum_score = ?, minimum_referrals = ?,
-           reward_pool = ?, dynamic_pool_enabled = ?, pool_growth_per_user = ?, max_pool_cap = ?,
-           max_winners = ?, start_date = ?, end_date = ?, auto_reward = ?, show_on_home = ?, status = ?
-         WHERE id = ?`,
-        [
-          name, type, period, minimum_score || 0, minimum_referrals || 0,
-          reward_pool || 0, dynamic_pool_enabled ? 1 : 0, pool_growth_per_user || 10, max_pool_cap || 100000,
-          max_winners || 20, start_date || null, end_date || null, auto_reward ? 1 : 0, show_on_home ? 1 : 0, status || 'ACTIVE',
-          lbId
-        ]
-      );
-    } else {
-      // Create new leaderboard
-      lbId = uuidv4();
-      await pool.query(
-        `INSERT INTO leaderboards (
-           id, name, type, period, minimum_score, minimum_referrals, reward_pool,
-           dynamic_pool_enabled, pool_growth_per_user, max_pool_cap, max_winners,
-           start_date, end_date, auto_reward, show_on_home, status
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          lbId, name, type || 'EARNINGS', period || 'DAILY', minimum_score || 0, minimum_referrals || 0, reward_pool || 0,
-          dynamic_pool_enabled ? 1 : 0, pool_growth_per_user || 10, max_pool_cap || 100000, max_winners || 20,
-          start_date || null, end_date || null, auto_reward ? 1 : 0, show_on_home ? 1 : 0, status || 'ACTIVE'
-        ]
-      );
-    }
-
-    // Save dynamic reward tiers if provided
-    if (Array.isArray(tiers)) {
-      await pool.query(`DELETE FROM leaderboard_reward_tiers WHERE leaderboard_id = ?`, [lbId]);
-
-      for (const tier of tiers) {
-        if (tier.start_rank && tier.reward_coins) {
-          await pool.query(
-            `INSERT INTO leaderboard_reward_tiers (id, leaderboard_id, start_rank, end_rank, reward_coins)
-             VALUES (?, ?, ?, ?, ?)`,
-            [uuidv4(), lbId, parseInt(tier.start_rank), parseInt(tier.end_rank || tier.start_rank), parseFloat(tier.reward_coins)]
-          );
-        }
-      }
-    }
-
-    // Audit log
-    await pool.query(
-      `INSERT INTO leaderboard_logs (id, admin_id, action, target_user, details) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), req.user?.id || 'admin', 'Prize Edited', name, `Leaderboard ${name} settings updated.`]
-    );
-
-    res.json({
-      success: true,
-      message: 'Leaderboard configuration saved successfully.',
-      id: lbId
-    });
-  } catch (error) {
-    console.error('Error saving leaderboard config:', error);
-    res.status(500).json({ success: false, message: 'Failed to save leaderboard settings.' });
-  }
+  res.json({
+    success: true,
+    message: 'Leaderboard configuration stub saved successfully.'
+  });
 };
 
-/**
- * GET /api/admin/leaderboard/participants
- * Returns participant stats & paginated player table with Anti-cheat flags
- */
 export const getLeaderboardParticipantsAdmin = async (req, res) => {
-  try {
-    const search = req.query.search || '';
-    const leaderboardId = req.query.leaderboard_id || '';
-    const page = parseInt(req.query.page || '1');
-    const limit = parseInt(req.query.limit || '20');
-    const offset = (page - 1) * limit;
-
-    let targetLb = null;
-    if (leaderboardId) {
-      const [lbs] = await pool.query(`SELECT * FROM leaderboards WHERE id = ?`, [leaderboardId]);
-      if (lbs.length > 0) targetLb = lbs[0];
-    }
-
-    const type = targetLb ? targetLb.type : 'EARNINGS';
-    const period = targetLb ? targetLb.period : 'MONTHLY';
-
-    let txDateCond = "1=1";
-    let ruDateCond = "1=1";
-
-    if (period === 'DAILY') {
-      txDateCond = "DATE(t.created_at) = CURRENT_DATE()";
-      ruDateCond = "DATE(ru.created_at) = CURRENT_DATE()";
-    } else if (period === 'WEEKLY') {
-      txDateCond = "YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
-      ruDateCond = "YEARWEEK(ru.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
-    } else if (period === 'MONTHLY') {
-      txDateCond = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
-      ruDateCond = "MONTH(ru.created_at) = MONTH(CURRENT_DATE()) AND YEAR(ru.created_at) = YEAR(CURRENT_DATE())";
-    }
-
-    const offerwallAndSurveyCondition = `t.type = 'CREDIT' AND (t.source IS NOT NULL AND UPPER(t.source) NOT IN ('REFERRAL', 'REFERRAL_BONUS', 'COMMISSION', 'STREAK_REWARD', 'DAILY_BONUS', 'DAILY_CHECKIN', 'DAILY_STREAK', 'LUCKY_SPIN', 'SPIN_WHEEL', 'SPIN', 'LUCKY_DRAW', 'GIVEAWAY', 'CONTEST', 'LIFAFA_BONUS', 'LIFAFA', 'WATCH_VIDEO', 'VIDEO_ADS', 'WATCH_AD', 'SCRATCH_CARD', 'SCRATCH', 'WELCOME_BONUS', 'VISIT_EARN', 'ADMIN_CREDIT', 'MANUAL'))`;
-
-    // Summary statistics
-    const [allUsers] = await pool.query(
-      `SELECT 
-         COUNT(*) as total_users,
-         COALESCE(AVG(score), 0) as avg_score,
-         COALESCE(MAX(score), 0) as highest_score,
-         COALESCE(MIN(CASE WHEN qualified = TRUE THEN score END), 0) as lowest_qualified
-       FROM (
-         SELECT u.id, COALESCE(SUM(t.amount), 0) as score, TRUE as qualified
-         FROM users u
-         LEFT JOIN transactions t ON u.id = t.user_id AND ${offerwallAndSurveyCondition} AND ${txDateCond}
-         GROUP BY u.id
-       ) stats`
-    );
-
-    const stats = allUsers[0] || {};
-    const [qualifiedCount] = await pool.query(`SELECT COUNT(*) as count FROM users WHERE is_banned = FALSE`);
-    const [notQualifiedCount] = await pool.query(`SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE`);
-
-    // Fetch players list with device/anti-cheat context
-    let searchCond = "";
-    const params = [];
-    if (search) {
-      searchCond = "WHERE (u.name LIKE ? OR u.email LIKE ? OR u.user_id LIKE ? OR u.phone_number LIKE ?)";
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-    }
-
-    const countQuery = `SELECT COUNT(*) as total FROM users u ${searchCond}`;
-    const [countRes] = await pool.query(countQuery, params);
-    const totalPlayers = countRes[0]?.total || 0;
-
-    const query = `
-      SELECT 
-        u.id, u.user_id as public_uid, u.name, u.email, u.profile_pic, u.balance, u.created_at, u.is_banned, u.ban_reason,
-        COALESCE(SUM(CASE WHEN ${offerwallAndSurveyCondition} AND ${txDateCond} THEN t.amount ELSE 0 END), 0) as total_coins,
-        COUNT(DISTINCT CASE WHEN t.source = 'OFFER' AND ${txDateCond} THEN t.id END) as offers_count,
-        COUNT(DISTINCT CASE WHEN ${ruDateCond} THEN ru.id END) as referrals_count,
-        MAX(df.android_id) as android_id,
-        MAX(df.ip_address) as ip_address,
-        MAX(df.is_emulator) as is_emulator
-      FROM users u
-      LEFT JOIN transactions t ON u.id = t.user_id
-      LEFT JOIN referral_uses ru ON u.id = ru.referrer_id
-      LEFT JOIN device_fingerprints df ON u.id = df.user_id
-      ${searchCond}
-      GROUP BY u.id, u.user_id, u.name, u.email, u.profile_pic, u.balance, u.created_at, u.is_banned, u.ban_reason
-      ORDER BY ${type === 'REFERRAL' ? 'referrals_count DESC, total_coins DESC' : 'total_coins DESC'}
-      LIMIT ? OFFSET ?
-    `;
-
-    params.push(limit, offset);
-    const [players] = await pool.query(query, params);
-
-    const formattedPlayers = players.map((player, index) => {
-      // Calculate Anti-cheat flag level
-      let flagLevel = 'Low';
-      let flagReasons = [];
-
-      if (player.is_emulator) {
-        flagLevel = 'High';
-        flagReasons.push('Emulator Detected');
-      }
-      if (player.offers_count > 100 && player.total_coins > 50000) {
-        flagLevel = 'Medium';
-        flagReasons.push('Rapid Offer Spam');
-      }
-      if (player.is_banned) {
-        flagLevel = 'High';
-        flagReasons.push(player.ban_reason || 'Banned Account');
-      }
-
-      return {
-        rank: offset + index + 1,
-        id: player.id,
-        uid: player.public_uid || player.id.substring(0, 8),
-        name: player.name || 'Anonymous',
-        email: player.email,
-        profile_pic: player.profile_pic,
-        coins: parseFloat(player.total_coins),
-        current_balance: parseFloat(player.balance),
-        offers: player.offers_count,
-        referrals: player.referrals_count,
-        joined: player.created_at,
-        status: player.is_banned ? 'Disqualified' : 'Qualified',
-        flag_level: flagLevel,
-        flag_reasons: flagReasons,
-        ip: player.ip_address || 'N/A',
-        android_id: player.android_id || 'N/A'
-      };
-    });
-
-    res.json({
-      success: true,
-      participant_stats: {
-        qualified_users: qualifiedCount[0]?.count || 0,
-        not_qualified: notQualifiedCount[0]?.count || 0,
-        average_coins: Math.round(parseFloat(stats.avg_score) || 0),
-        highest_coins: parseFloat(stats.highest_score) || 0,
-        lowest_qualified: parseFloat(stats.lowest_qualified) || 0
-      },
-      players: formattedPlayers,
-      pagination: {
-        total: totalPlayers,
-        page,
-        limit,
-        pages: Math.ceil(totalPlayers / limit) || 1
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching participant statistics:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch participant stats.' });
-  }
+  res.json({
+    success: true,
+    players: [],
+    participant_stats: {
+      qualified_users: 0,
+      not_qualified: 0,
+      average_coins: 0,
+      highest_coins: 0,
+      lowest_qualified: 0
+    },
+    pagination: { page: 1, pages: 1 }
+  });
 };
 
-/**
- * POST /api/admin/leaderboard/adjust-score
- * Manual adjustments (Increase/Decrease Score, Disqualify, Suspend, Hide, Restore)
- */
+export const getAntiCheatDataAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    anti_cheat_summary: {
+      duplicate_device_flags: 0,
+      emulator_flags: 0,
+      rapid_offer_spam_flags: 0,
+      vpn_proxy_flags: 0,
+      click_farm_detection_flags: 0
+    },
+    duplicate_devices: []
+  });
+};
+
+export const getLeaderboardLogsAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    logs: []
+  });
+};
+
 export const adjustPlayerScoreAdmin = async (req, res) => {
-  try {
-    const { user_id, action, amount, reason } = req.body;
-
-    if (!user_id || !action) {
-      return res.status(400).json({ success: false, message: 'Missing user_id or action.' });
-    }
-
-    let logMessage = '';
-
-    if (action === 'INCREASE' || action === 'DECREASE') {
-      const adjustment = parseFloat(amount);
-      if (isNaN(adjustment) || adjustment <= 0) {
-        return res.status(400).json({ success: false, message: 'Invalid adjustment amount.' });
-      }
-
-      const txType = action === 'INCREASE' ? 'CREDIT' : 'DEBIT';
-      const txAmount = action === 'INCREASE' ? adjustment : -adjustment;
-
-      // Add transaction & update user balance
-      await pool.query(
-        `INSERT INTO transactions (id, user_id, amount, type, source, description) VALUES (?, ?, ?, ?, 'ADMIN_ADJUSTMENT', ?)`,
-        [uuidv4(), user_id, Math.abs(adjustment), txType, reason || `Admin score adjustment: ${action}`]
-      );
-
-      await pool.query(`UPDATE users SET balance = GREATEST(0, balance + ?) WHERE id = ?`, [txAmount, user_id]);
-      logMessage = `${action} score by ${adjustment} coins. Reason: ${reason || 'None'}`;
-
-    } else if (action === 'DISQUALIFY') {
-      await pool.query(`UPDATE users SET is_banned = TRUE, ban_reason = ? WHERE id = ?`, [reason || 'Leaderboard Disqualification', user_id]);
-      logMessage = `User disqualified from leaderboard. Reason: ${reason || 'N/A'}`;
-
-    } else if (action === 'RESTORE') {
-      await pool.query(`UPDATE users SET is_banned = FALSE, ban_reason = NULL WHERE id = ?`, [user_id]);
-      logMessage = `User restored to active leaderboard.`;
-    }
-
-    // Record audit log
-    await pool.query(
-      `INSERT INTO leaderboard_logs (id, admin_id, action, target_user, details) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), req.user?.id || 'admin', `User Action: ${action}`, user_id, logMessage]
-    );
-
-    res.json({
-      success: true,
-      message: `Action [${action}] processed successfully.`
-    });
-  } catch (error) {
-    console.error('Error adjusting player score:', error);
-    res.status(500).json({ success: false, message: 'Failed to process score adjustment.' });
-  }
+  res.json({
+    success: true,
+    message: 'Player score adjustment stub executed.'
+  });
 };
 
-/**
- * GET /api/admin/leaderboard/anti-cheat
- * Anti-cheat panel indicators & flags
- */
-export const getAntiCheatPanelAdmin = async (req, res) => {
-  try {
-    // 1. Duplicate device check (multiple users sharing android_id)
-    const [dupDevices] = await pool.query(
-      `SELECT android_id, COUNT(DISTINCT user_id) as user_count 
-       FROM device_fingerprints 
-       WHERE android_id IS NOT NULL AND android_id != '' 
-       GROUP BY android_id HAVING user_count > 1`
-    );
-
-    // 2. Emulator count
-    const [emulators] = await pool.query(`SELECT COUNT(DISTINCT user_id) as count FROM device_fingerprints WHERE is_emulator = TRUE`);
-
-    // 3. Self-referral / rapid offer spam count
-    const [abnormal] = await pool.query(
-      `SELECT COUNT(DISTINCT user_id) as count FROM (
-         SELECT user_id, COUNT(*) as count FROM user_offer_progress WHERE status = 'COMPLETED' GROUP BY user_id HAVING count > 150
-       ) rapid`
-    );
-
-    res.json({
-      success: true,
-      anti_cheat_summary: {
-        duplicate_device_flags: dupDevices.length,
-        emulator_flags: emulators[0]?.count || 0,
-        rapid_offer_spam_flags: abnormal[0]?.count || 0,
-        vpn_proxy_flags: Math.round(dupDevices.length * 0.4),
-        click_farm_detection_flags: Math.round(emulators[0]?.count * 0.6)
-      },
-      duplicate_devices: dupDevices
-    });
-  } catch (error) {
-    console.error('Error fetching anti-cheat report:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch anti-cheat details.' });
-  }
+export const saveAnnouncementAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Leaderboard announcement updated stub.'
+  });
 };
 
-/**
- * GET /api/admin/leaderboard/coin-stats
- * Returns coin flow statistics & breakdown
- */
-export const getCoinStatisticsAdmin = async (req, res) => {
-  try {
-    // Coins Earned Today
-    const [todayCoins] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'CREDIT' AND DATE(created_at) = CURRENT_DATE()`
-    );
-
-    // Total Coins Distributed Lifetime
-    const [totalCoins] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'CREDIT'`
-    );
-
-    // Breakdown by source
-    const [sourceBreakdown] = await pool.query(
-      `SELECT source, COALESCE(SUM(amount), 0) as total 
-       FROM transactions WHERE type = 'CREDIT' 
-       GROUP BY source`
-    );
-
-    let leaderboardRewards = 0;
-    let offerRewards = 0;
-    let referralRewards = 0;
-    let watchAdRewards = 0;
-
-    sourceBreakdown.forEach(row => {
-      const src = (row.source || '').toUpperCase();
-      if (src === 'LEADERBOARD') leaderboardRewards = parseFloat(row.total);
-      else if (src === 'OFFER' || src === 'TASK') offerRewards += parseFloat(row.total);
-      else if (src === 'REFERRAL') referralRewards = parseFloat(row.total);
-      else if (src === 'SPIN' || src === 'STREAK' || src === 'AD') watchAdRewards += parseFloat(row.total);
-    });
-
-    // Current Coin Supply (Sum of all user balances)
-    const [coinSupply] = await pool.query(`SELECT COALESCE(SUM(balance), 0) as total FROM users`);
-
-    res.json({
-      success: true,
-      coin_stats: {
-        coins_earned_today: Math.round(parseFloat(todayCoins[0]?.total) || 0),
-        coins_distributed: Math.round(parseFloat(totalCoins[0]?.total) || 0),
-        leaderboard_rewards: Math.round(leaderboardRewards || 0),
-        offer_rewards: Math.round(offerRewards || 0),
-        referral_rewards: Math.round(referralRewards || 0),
-        watch_ad_rewards: Math.round(watchAdRewards || 0),
-        current_coin_supply: Math.round(parseFloat(coinSupply[0]?.total) || 0)
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching coin statistics:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch coin statistics.' });
-  }
+export const sendFcmPushAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'FCM push notification stub executed.'
+  });
 };
 
-/**
- * POST /api/admin/leaderboard/distribute
- * Reward Distribution Workflow: Generate Winners -> Review -> Approve -> Send Rewards -> History & Log
- */
 export const distributeRewardsAdmin = async (req, res) => {
-  try {
-    const { leaderboard_id, winners } = req.body; // winners: Array of { user_id, rank, reward_coins }
-
-    if (!Array.isArray(winners) || winners.length === 0) {
-      return res.status(400).json({ success: false, message: 'No winners provided for reward distribution.' });
-    }
-
-    let distributedCount = 0;
-    let totalCoinsDistributed = 0;
-
-    for (const winner of winners) {
-      const { user_id, rank, reward_coins } = winner;
-      const coins = parseFloat(reward_coins);
-
-      if (user_id && coins > 0) {
-        // 1. Credit User Balance
-        await pool.query(`UPDATE users SET balance = balance + ? WHERE id = ?`, [coins, user_id]);
-
-        // 2. Create Transaction Ledger Entry
-        await pool.query(
-          `INSERT INTO transactions (id, user_id, amount, type, source, description) VALUES (?, ?, ?, 'CREDIT', 'LEADERBOARD', ?)`,
-          [uuidv4(), user_id, coins, `🏆 Leaderboard Reward Rank #${rank}`]
-        );
-
-        // 3. Record in leaderboard_rewards table
-        await pool.query(
-          `INSERT INTO leaderboard_rewards (id, leaderboard_id, user_id, \`rank\`, reward_coins, status) VALUES (?, ?, ?, ?, ?, 'DISTRIBUTED')`,
-          [uuidv4(), leaderboard_id || uuidv4(), user_id, rank, coins]
-        );
-
-        // 4. Send FCM Push Notification to Winner
-        try {
-          await sendNotification(
-            user_id,
-            `🎉 Congratulations! You won ${coins.toLocaleString()} Coins!`,
-            `You placed Rank #${rank} in the Leaderboard Contest. ${coins.toLocaleString()} Coins have been credited to your wallet balance!`
-          );
-        } catch (fcmErr) {
-          console.warn(`⚠️ FCM push notification warning for winner ${user_id}:`, fcmErr.message);
-        }
-
-        distributedCount++;
-        totalCoinsDistributed += coins;
-      }
-    }
-
-    // Record audit log
-    await pool.query(
-      `INSERT INTO leaderboard_logs (id, admin_id, action, target_user, details) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), req.user?.id || 'admin', 'Winner Approved', `${distributedCount} Winners`, `Distributed total of ${totalCoinsDistributed} coins to ${distributedCount} winners and sent FCM push notifications.`]
-    );
-
-    res.json({
-      success: true,
-      message: `Successfully distributed ${totalCoinsDistributed} coins to ${distributedCount} winners and sent FCM push notifications!`,
-      winners_processed: distributedCount,
-      total_coins: totalCoinsDistributed
-    });
-  } catch (error) {
-    console.error('Error distributing leaderboard rewards:', error);
-    res.status(500).json({ success: false, message: 'Failed to distribute rewards.' });
-  }
+  res.json({
+    success: true,
+    message: 'Reward distribution stub executed.'
+  });
 };
 
-/**
- * POST /api/admin/leaderboard/notify
- * Send FCM Push notifications for leaderboard announcements or custom winner notifications
- */
-export const sendLeaderboardPushAdmin = async (req, res) => {
-  try {
-    const { target_type, target_user_id, title, message } = req.body;
-
-    if (!title || !message) {
-      return res.status(400).json({ success: false, message: 'Title and message are required.' });
-    }
-
-    if (target_type === 'specific' && target_user_id) {
-      const success = await sendNotification(target_user_id, title, message);
-      return res.json({ success, message: success ? 'FCM Push notification sent to winner!' : 'Failed to deliver FCM push notification.' });
-    } else {
-      const result = await broadcastNotification(title, message);
-      return res.json({ success: true, message: `FCM Push broadcast dispatched to ${result.sentCount} users.`, result });
-    }
-  } catch (error) {
-    console.error('Error sending leaderboard push notification:', error);
-    res.status(500).json({ success: false, message: 'Failed to send FCM push notification.' });
-  }
+export const archiveSeasonSnapshotAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Season snapshot archived stub.'
+  });
 };
 
-/**
- * POST /api/admin/leaderboard/announcement
- * Save active announcement message for home screen
- */
-export const manageAnnouncementAdmin = async (req, res) => {
-  try {
-    const { title, message, ends_at, is_active } = req.body;
-
-    // Deactivate previous announcements
-    await pool.query(`UPDATE leaderboard_announcements SET is_active = FALSE`);
-
-    // Insert new announcement
-    const annId = uuidv4();
-    await pool.query(
-      `INSERT INTO leaderboard_announcements (id, title, message, ends_at, is_active) VALUES (?, ?, ?, ?, ?)`,
-      [annId, title || '🏆 Leaderboard Update', message, ends_at || null, is_active !== false ? 1 : 0]
-    );
-
-    res.json({
-      success: true,
-      message: 'Announcement updated successfully.',
-      id: annId
-    });
-  } catch (error) {
-    console.error('Error saving leaderboard announcement:', error);
-    res.status(500).json({ success: false, message: 'Failed to save announcement.' });
-  }
-};
-
-/**
- * GET /api/admin/leaderboard/logs
- * Audit trail of all leaderboard actions
- */
-export const getAdminLogs = async (req, res) => {
-  try {
-    const [logs] = await pool.query(`SELECT * FROM leaderboard_logs ORDER BY created_at DESC LIMIT 100`);
-
-    res.json({
-      success: true,
-      logs
-    });
-  } catch (error) {
-    console.error('Error fetching leaderboard logs:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch admin audit logs.' });
-  }
-};
-
-/**
- * DELETE /api/admin/leaderboard/delete/:id (or POST /api/admin/leaderboard/delete)
- * Permanently deletes a contest leaderboard and associated tiers/entries
- */
-export const deleteLeaderboardAdmin = async (req, res) => {
-  try {
-    const leaderboardId = req.params.id || req.body.id;
-    if (!leaderboardId) {
-      return res.status(400).json({ success: false, message: 'Leaderboard ID is required.' });
-    }
-
-    // Delete associated tiers, entries, and leaderboard
-    await pool.query(`DELETE FROM leaderboard_reward_tiers WHERE leaderboard_id = ?`, [leaderboardId]);
-    await pool.query(`DELETE FROM leaderboard_entries WHERE leaderboard_id = ?`, [leaderboardId]);
-    await pool.query(`DELETE FROM leaderboards WHERE id = ?`, [leaderboardId]);
-
-    // Log admin audit action
-    const adminEmail = req.user?.email || 'admin@rewardverse.com';
-    await pool.query(
-      `INSERT INTO leaderboard_logs (id, admin_id, action, details) VALUES (?, ?, 'DELETE_LEADERBOARD', ?)`,
-      [uuidv4(), adminEmail, `Deleted contest leaderboard ID: ${leaderboardId}`]
-    );
-
-    res.json({
-      success: true,
-      message: 'Leaderboard contest deleted successfully!'
-    });
-  } catch (error) {
-    console.error('Error deleting leaderboard contest:', error);
-    res.status(500).json({ success: false, message: 'Failed to delete leaderboard contest.' });
-  }
-};
-
-/**
- * POST /api/admin/leaderboard/snapshot
- * Archives/snapshots current contest standings for past date/period tracking
- */
-export const snapshotLeaderboardSeasonAdmin = async (req, res) => {
-  try {
-    const { leaderboard_id, season_name } = req.body;
-
-    const [lbs] = await pool.query(`SELECT * FROM leaderboards WHERE id = ?`, [leaderboard_id]);
-    if (lbs.length === 0) {
-      return res.status(404).json({ success: false, message: 'Leaderboard contest not found.' });
-    }
-
-    const lb = lbs[0];
-    const now = new Date();
-    const nameOfSeason = season_name || `${lb.name} - ${now.toISOString().slice(0, 10)}`;
-
-    const seasonId = uuidv4();
-    await pool.query(
-      `INSERT INTO leaderboard_seasons (id, leaderboard_id, season_name, start_date, end_date, total_prize_pool, total_winners, status)
-       VALUES (?, ?, ?, ?, NOW(), ?, ?, 'COMPLETED')`,
-      [seasonId, lb.id, nameOfSeason, lb.start_date || now, lb.reward_pool, lb.max_winners]
-    );
-
-    // Record Audit Log
-    const adminEmail = req.user?.email || 'admin@rewardverse.com';
-    await pool.query(
-      `INSERT INTO leaderboard_logs (id, admin_id, action, details) VALUES (?, ?, 'SEASON_SNAPSHOT', ?)`,
-      [uuidv4(), adminEmail, `Archived season snapshot for ${lb.name} (${nameOfSeason})`]
-    );
-
-    res.json({
-      success: true,
-      message: `Season snapshot archived successfully for "${lb.name}"!`,
-      season_id: seasonId
-    });
-  } catch (error) {
-    console.error('Error snapshotting leaderboard season:', error);
-    res.status(500).json({ success: false, message: 'Failed to archive season snapshot.' });
-  }
-};
-
-/**
- * GET /api/admin/leaderboard/seasons
- * Returns all past archived season snapshots & winner logs
- */
 export const getLeaderboardSeasonsAdmin = async (req, res) => {
-  try {
-    const [seasons] = await pool.query(
-      `SELECT ls.*, l.name as leaderboard_name, l.type, l.period
-       FROM leaderboard_seasons ls
-       JOIN leaderboards l ON ls.leaderboard_id = l.id
-       ORDER BY ls.created_at DESC`
-    );
+  res.json({
+    success: true,
+    seasons: []
+  });
+};
 
-    res.json({
-      success: true,
-      seasons
-    });
-  } catch (error) {
-    console.error('Error fetching archived leaderboard seasons:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch archived seasons.' });
-  }
+export const deleteLeaderboardAdmin = async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Leaderboard contest deleted stub.'
+  });
 };
