@@ -515,15 +515,24 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
   try {
     const period = (req.query.period || 'DAILY').toUpperCase();
     let dateCondition = "DATE(t.created_at) = CURRENT_DATE()";
-    if (period === 'WEEKLY') dateCondition = "YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
-    else if (period === 'MONTHLY') dateCondition = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
+    let minScore = 0;
 
-    const [lbs] = await pool.query(`SELECT minimum_score FROM leaderboards WHERE period = ? LIMIT 1`, [period]);
-    const minScore = lbs.length > 0 ? parseFloat(lbs[0].minimum_score) : 0;
+    if (period === 'ALLTIME') {
+      dateCondition = "1=1";
+    } else if (period === 'WEEKLY') {
+      dateCondition = "YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1)";
+    } else if (period === 'MONTHLY') {
+      dateCondition = "MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE())";
+    }
+
+    if (period !== 'ALLTIME') {
+      const [lbs] = await pool.query(`SELECT minimum_score FROM leaderboards WHERE period = ? LIMIT 1`, [period]);
+      if (lbs.length > 0) minScore = parseFloat(lbs[0].minimum_score) || 0;
+    }
 
     const [players] = await pool.query(
       `SELECT 
-         u.id, u.user_id, u.name, u.email, u.profile_pic,
+         u.id, u.user_id as public_id, u.name, u.email, u.profile_pic,
          COALESCE(SUM(t.amount), 0) as score
        FROM users u
        JOIN transactions t ON u.id = t.user_id
@@ -543,10 +552,10 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
     const formattedPlayers = players.map((p, idx) => ({
       rank: idx + 1,
       id: p.id,
-      public_id: p.user_id,
-      name: p.name,
-      email: p.email,
-      profile_pic: p.profile_pic,
+      public_id: p.public_id || p.id.substring(0, 10),
+      name: p.name || 'User',
+      email: p.email || 'N/A',
+      profile_pic: p.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(p.name || 'User'),
       score: parseFloat(p.score)
     }));
 
