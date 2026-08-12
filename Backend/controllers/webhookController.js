@@ -728,57 +728,30 @@ export const handleGrowdeck = async (req, res) => {
 
     console.log('🎮 [GROWDECK POSTBACK] Incoming request:', req.query);
 
-    if (!user_id || !transaction_id) {
-      return res.status(200).json({
-        success: true,
-        payload: { status: 'error', message: 'Missing required parameters' }
-      });
+    if (!user_id || !transaction_id || !signature) {
+      return res.status(400).json({ status: 'error', message: 'Missing required parameters' });
     }
 
-    // Official GrowDeck GitBook logic: secretKey . user_id . Math.trunc(reward) . transaction_id
+    // Signature HMAC-SHA256: secretKey . user_id . trunc(reward) . transaction_id
     const rewardTrunc = Math.trunc(parseFloat(reward || 0));
     const template = `${GROWDECK_SECRET_KEY}.${user_id}.${rewardTrunc}.${transaction_id}`;
     const calculatedSig = crypto.createHmac('sha256', GROWDECK_SECRET_KEY).update(template).digest('hex');
 
-    // Test callback detection for dummy placeholder macros
-    const isTestCall = (user_id === '4' || user_id.includes('{') || String(reward).includes('{') || String(transaction_id).includes('{'));
-
-    if (!isTestCall && signature && !safeCompare(signature.toLowerCase(), calculatedSig.toLowerCase())) {
+    if (!safeCompare(signature, calculatedSig)) {
       console.warn('⚠️ [GROWDECK] Signature mismatch:', { signature, calculatedSig });
-      return res.status(200).json({
-        success: true,
-        payload: { status: 'error', message: 'Invalid Signature' }
-      });
+      return res.status(403).json({ status: 'error', message: 'Invalid Signature' });
     }
 
     const user = await resolveUser(connection, user_id);
     if (!user) {
-      if (isTestCall) {
-        console.log('✅ [GROWDECK] Test callback validated successfully.');
-        return res.status(200).json({
-          success: true,
-          payload: {
-            status: "success",
-            message: "User rewarded successfully"
-          }
-        });
-      }
-      return res.status(200).json({
-        success: true,
-        payload: { status: 'error', message: 'User not found' }
-      });
+      console.warn('⚠️ [GROWDECK] User not found:', user_id);
+      return res.status(404).json({ status: 'error', message: 'User not found' });
     }
 
     const internalId = user.id;
 
     if (await completionExists(connection, transaction_id)) {
-      return res.status(200).json({
-        success: true,
-        payload: {
-          status: "success",
-          message: "Duplicate transaction ignored"
-        }
-      });
+      return res.status(200).json({ status: 'success', message: 'Duplicate transaction ignored' });
     }
 
     await connection.beginTransaction();
@@ -812,20 +785,11 @@ export const handleGrowdeck = async (req, res) => {
       sendNotification(internalId, "GrowDeck Reward Received! 🪙", `You received ${payout} coins from GrowDeck Playtime`).catch(console.error);
     } catch (_) {}
 
-    return res.status(200).json({
-      success: true,
-      payload: {
-        status: "success",
-        message: "User rewarded successfully"
-      }
-    });
+    return res.status(200).json({ status: 'success', message: 'User rewarded successfully' });
   } catch (error) {
     try { await connection.rollback(); } catch (_) {}
-    console.error('❌ [GROWDECK] Webhook error:', error);
-    return res.status(200).json({
-      success: true,
-      payload: { status: 'error', message: error.message }
-    });
+    console.error('GrowDeck error:', error);
+    return res.status(500).json({ status: 'error', message: error.message });
   } finally {
     connection.release();
   }
