@@ -748,7 +748,7 @@ export const getAdminLogs = async (req, res) => {
          lr.rank,
          lr.reward_coins,
          lr.status,
-         COALESCE(lr.rewarded_at, NOW()) as created_at,
+         NOW() as created_at,
          u.name as user_name,
          u.user_id as public_id,
          u.email as user_email,
@@ -758,7 +758,7 @@ export const getAdminLogs = async (req, res) => {
        FROM leaderboard_rewards lr
        LEFT JOIN users u ON (u.id = lr.user_id OR u.user_id = lr.user_id OR u.uid = lr.user_id)
        LEFT JOIN leaderboards l ON l.id = lr.leaderboard_id
-       ORDER BY lr.rewarded_at DESC
+       ORDER BY lr.id DESC
        LIMIT 200`
     );
 

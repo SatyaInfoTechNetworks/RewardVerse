@@ -769,9 +769,13 @@ export async function initializeDatabase() {
         reward_coins DECIMAL(10, 2) NOT NULL,
         status VARCHAR(50) DEFAULT 'DISTRIBUTED',
         rewarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    try { await connection.query(`ALTER TABLE leaderboard_rewards ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`); } catch (e) {}
+    try { await connection.query(`ALTER TABLE leaderboard_rewards ADD COLUMN rewarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`); } catch (e) {}
 
     await connection.query(`
       CREATE TABLE IF NOT EXISTS leaderboard_seasons (
