@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Trophy, Award, Users, DollarSign, Settings, RefreshCw, 
-  Send, CheckCircle, AlertCircle, Calendar, Save, Layers, Search
+  Send, CheckCircle, AlertCircle, Calendar, Save, Layers, Search,
+  Folder, ArrowLeft, ChevronRight, Filter
 } from 'lucide-react';
 
 export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
@@ -102,6 +103,37 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
 
   const [payoutLogs, setPayoutLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState(null);
+
+  const groupedBatches = useMemo(() => {
+    const map = new Map();
+    payoutLogs.forEach(log => {
+      const d = new Date(log.created_at || Date.now());
+      const dateStr = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const batchKey = `${dateStr}_${log.leaderboard_name || log.period}`;
+
+      if (!map.has(batchKey)) {
+        map.set(batchKey, {
+          batch_id: batchKey,
+          leaderboard_name: log.leaderboard_name || `${log.period} Leaderboard`,
+          period: log.period,
+          date_formatted: `${dateStr} (${timeStr})`,
+          raw_date: dateStr,
+          total_coins: 0,
+          winners_count: 0,
+          winners: []
+        });
+      }
+
+      const batch = map.get(batchKey);
+      batch.winners.push(log);
+      batch.total_coins += parseFloat(log.reward_coins || 0);
+      batch.winners_count += 1;
+    });
+
+    return Array.from(map.values());
+  }, [payoutLogs]);
 
   const fetchRewardLogs = async () => {
     setLoadingLogs(true);
@@ -497,13 +529,26 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
         </div>
       )}
 
-      {/* Tab 4: Payout History & Audit Logs */}
+      {/* Tab 4: Payout History & Audit Logs (Folder View) */}
       {activeTab === 'logs' && (
         <div className="glass-panel" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary, #fff)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Award size={18} color="#10b981" /> Leaderboard Reward Payout History & Audit Logs
-            </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {selectedBatch && (
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setSelectedBatch(null)}
+                  style={{ padding: '5px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <ArrowLeft size={14} /> Back to Folders
+                </button>
+              )}
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary, #fff)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Folder size={18} color="#c084fc" /> 
+                {selectedBatch ? `${selectedBatch.leaderboard_name} — ${selectedBatch.date_formatted}` : 'Payout Distribution History Folders'}
+              </h3>
+            </div>
+            
             <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: '0.78rem' }} onClick={fetchRewardLogs}>
               <RefreshCw size={14} /> Refresh Logs
             </button>
@@ -513,53 +558,117 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>Loading distribution logs...</p>
           ) : payoutLogs.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No reward payout logs recorded yet. Click "Distribute Rewards" on any active contest to credit rewards & log transactions.</p>
+          ) : !selectedBatch ? (
+            /* Folder Batch Grid View */
+            <div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '16px' }}>
+                Click on any Leaderboard Distribution Folder to view detailed user payouts and rank breakdowns.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                {groupedBatches.map((batch) => (
+                  <div
+                    key={batch.batch_id}
+                    className="glass-panel"
+                    onClick={() => setSelectedBatch(batch)}
+                    style={{
+                      padding: '16px',
+                      cursor: 'pointer',
+                      border: '1px solid rgba(168,85,247,0.25)',
+                      background: 'rgba(168,85,247,0.04)',
+                      borderRadius: '12px',
+                      transition: 'all 0.2s ease-in-out'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(168,85,247,0.12)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(168,85,247,0.04)'}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Folder size={20} color="#c084fc" />
+                        <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary, #fff)' }}>{batch.leaderboard_name}</strong>
+                      </div>
+                      <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.2)', color: '#10b981', fontWeight: 'bold' }}>
+                        {batch.winners_count} Winners
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={13} /> {batch.date_formatted}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)' }}>Coins Distributed:</span>
+                      <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>+{batch.total_coins.toLocaleString()} Coins</strong>
+                    </div>
+
+                    <div style={{ fontSize: '0.72rem', color: '#c084fc', marginTop: '8px', textAlign: 'right', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
+                      Open Folder <ChevronRight size={12} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)', textAlign: 'left' }}>
-                    <th style={{ padding: '10px' }}>Contest Name</th>
-                    <th style={{ padding: '10px' }}>Winner Name</th>
-                    <th style={{ padding: '10px' }}>Public Hex ID</th>
-                    <th style={{ padding: '10px' }}>Rank</th>
-                    <th style={{ padding: '10px' }}>Coins Credited</th>
-                    <th style={{ padding: '10px' }}>Status</th>
-                    <th style={{ padding: '10px' }}>Date & Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payoutLogs.map((log) => (
-                    <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <td style={{ padding: '10px', fontWeight: 'bold', color: '#c084fc' }}>{log.leaderboard_name}</td>
-                      <td style={{ padding: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <img
-                            src={log.profile_pic || `https://ui-avatars.com/api/?name=${encodeURIComponent(log.user_name || 'User')}`}
-                            alt=""
-                            style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
-                          />
-                          <span style={{ color: 'var(--text-primary, #fff)', fontWeight: '500' }}>{log.user_name}</span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px', color: '#818cf8', fontFamily: 'monospace' }}>{log.public_id}</td>
-                      <td style={{ padding: '10px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', background: 'rgba(245,158,11,0.2)', color: '#f59e0b', fontWeight: 'bold' }}>
-                          Rank #{log.rank}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px', color: '#10b981', fontWeight: 'bold' }}>+{log.reward_coins.toLocaleString()} Coins</td>
-                      <td style={{ padding: '10px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '0.75rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
-                          {log.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px', color: 'var(--text-muted, #64748b)', fontSize: '0.78rem' }}>
-                        {new Date(log.created_at).toLocaleString()}
-                      </td>
+            /* Folder Detail View */
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', display: 'block' }}>Distribution Session</span>
+                  <strong style={{ fontSize: '0.95rem', color: '#c084fc' }}>{selectedBatch.leaderboard_name} ({selectedBatch.period})</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', display: 'block' }}>Total Payout</span>
+                  <strong style={{ fontSize: '0.95rem', color: '#10b981' }}>+{selectedBatch.total_coins.toLocaleString()} Coins ({selectedBatch.winners_count} Winners)</strong>
+                </div>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)', textAlign: 'left' }}>
+                      <th style={{ padding: '10px' }}>Rank</th>
+                      <th style={{ padding: '10px' }}>Winner Name</th>
+                      <th style={{ padding: '10px' }}>Public Hex ID</th>
+                      <th style={{ padding: '10px' }}>Email</th>
+                      <th style={{ padding: '10px' }}>Coins Credited</th>
+                      <th style={{ padding: '10px' }}>Status</th>
+                      <th style={{ padding: '10px' }}>Date & Time</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {selectedBatch.winners.map((log) => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '10px', fontWeight: 'bold' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', background: log.rank === 1 ? 'rgba(245,158,11,0.2)' : log.rank === 2 ? 'rgba(255,255,255,0.1)' : log.rank === 3 ? 'rgba(205,127,50,0.2)' : 'rgba(255,255,255,0.03)', color: log.rank === 1 ? '#f59e0b' : log.rank === 2 ? '#e2e8f0' : log.rank === 3 ? '#cd7f32' : 'var(--text-secondary)' }}>
+                            Rank #{log.rank}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <img
+                              src={log.profile_pic || `https://ui-avatars.com/api/?name=${encodeURIComponent(log.user_name || 'User')}`}
+                              alt=""
+                              style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                            />
+                            <span style={{ color: 'var(--text-primary, #fff)', fontWeight: '500' }}>{log.user_name}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px', color: '#818cf8', fontFamily: 'monospace' }}>{log.public_id}</td>
+                        <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>{log.user_email}</td>
+                        <td style={{ padding: '10px', color: '#10b981', fontWeight: 'bold' }}>+{log.reward_coins.toLocaleString()} Coins</td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '0.75rem', background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px', color: 'var(--text-muted, #64748b)', fontSize: '0.78rem' }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
