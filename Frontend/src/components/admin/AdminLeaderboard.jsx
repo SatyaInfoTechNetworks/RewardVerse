@@ -3,9 +3,9 @@ import {
   Trophy, Award, Users, DollarSign, Settings, RefreshCw, 
   Send, CheckCircle, AlertCircle, Calendar, Filter, Save, Layers, Search
 } from 'lucide-react';
-import API_BASE_URL from '../../config/api';
+import { API_BASE } from '../../config';
 
-const AdminLeaderboard = () => {
+const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedPeriod, setSelectedPeriod] = useState('DAILY');
   const [loading, setLoading] = useState(false);
@@ -72,7 +72,22 @@ const AdminLeaderboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationMsg, setNotificationMsg] = useState(null);
 
-  const token = localStorage.getItem('adminToken');
+  const resolveBaseUrl = () => apiBase || API_BASE || '';
+  const resolveHeaders = () => {
+    if (typeof getHeaders === 'function') return getHeaders();
+    const token = localStorage.getItem('adminToken');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    };
+  };
+
+  const notify = (type, text) => {
+    if (typeof showNotice === 'function') {
+      showNotice(text, type);
+    }
+    setNotificationMsg({ type, text });
+  };
 
   useEffect(() => {
     fetchDashboardStats();
@@ -82,8 +97,8 @@ const AdminLeaderboard = () => {
 
   const fetchDashboardStats = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/dashboard`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/dashboard`, {
+        headers: resolveHeaders()
       });
       const data = await res.json();
       if (data.success && data.stats) {
@@ -96,8 +111,8 @@ const AdminLeaderboard = () => {
 
   const fetchLeaderboardConfigs = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/list`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/list`, {
+        headers: resolveHeaders()
       });
       const data = await res.json();
       if (data.success && data.leaderboards && data.leaderboards.length > 0) {
@@ -111,8 +126,8 @@ const AdminLeaderboard = () => {
   const fetchTopPlayers = async (period) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/participants?period=${period}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/participants?period=${period}`, {
+        headers: resolveHeaders()
       });
       const data = await res.json();
       if (data.success && data.players) {
@@ -135,24 +150,21 @@ const AdminLeaderboard = () => {
 
   const handleSaveConfig = async (config) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/save`, {
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/save`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: resolveHeaders(),
         body: JSON.stringify(config)
       });
       const data = await res.json();
       if (data.success) {
-        setNotificationMsg({ type: 'success', text: `Saved configuration for ${config.period} Leaderboard!` });
+        notify('success', `Saved configuration for ${config.period} Leaderboard!`);
         fetchLeaderboardConfigs();
       } else {
-        setNotificationMsg({ type: 'error', text: data.message || 'Failed to save config.' });
+        notify('error', data.message || 'Failed to save config.');
       }
     } catch (e) {
       console.error('Error saving config:', e);
-      setNotificationMsg({ type: 'error', text: 'Error connecting to server.' });
+      notify('error', 'Error connecting to server.');
     }
   };
 
@@ -161,24 +173,21 @@ const AdminLeaderboard = () => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/distribute`, {
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/distribute`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: resolveHeaders(),
         body: JSON.stringify({ period })
       });
       const data = await res.json();
       if (data.success) {
-        setNotificationMsg({ type: 'success', text: data.message });
+        notify('success', data.message);
         fetchDashboardStats();
       } else {
-        setNotificationMsg({ type: 'error', text: data.message || 'Failed to distribute rewards.' });
+        notify('error', data.message || 'Failed to distribute rewards.');
       }
     } catch (e) {
       console.error('Error distributing rewards:', e);
-      setNotificationMsg({ type: 'error', text: 'Error executing payout transaction.' });
+      notify('error', 'Error executing payout transaction.');
     } finally {
       setLoading(false);
     }

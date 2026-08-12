@@ -84,7 +84,11 @@ export const getHomeLeaderboardBanner = async (req, res) => {
     if (userId) {
       const [userTx] = await pool.query(
         `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-         WHERE user_id = ? AND type = 'CREDIT' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
+         WHERE user_id = ? AND type = 'CREDIT' 
+           AND source NOT LIKE '%STREAK%' 
+           AND source NOT LIKE '%SPIN%' 
+           AND source NOT LIKE '%CONTEST%' 
+           AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())`,
         [userId]
       );
       userScore = parseFloat(userTx[0]?.total) || 0;
@@ -92,7 +96,11 @@ export const getHomeLeaderboardBanner = async (req, res) => {
       const [rankRes] = await pool.query(
         `SELECT COUNT(DISTINCT user_id) + 1 as rank FROM (
            SELECT user_id, SUM(amount) as total FROM transactions
-           WHERE type = 'CREDIT' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
+           WHERE type = 'CREDIT' 
+             AND source NOT LIKE '%STREAK%' 
+             AND source NOT LIKE '%SPIN%' 
+             AND source NOT LIKE '%CONTEST%'
+             AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())
            GROUP BY user_id HAVING total > ?
          ) higher`,
         [userScore]
@@ -127,7 +135,7 @@ export const getHomeLeaderboardBanner = async (req, res) => {
 
 /**
  * GET /api/leaderboards/earnings
- * Returns ranked earnings leaderboard for period ('daily', 'weekly', 'monthly'), capped at 100 players
+ * Returns ranked earnings leaderboard for period ('daily', 'weekly', 'monthly', 'alltime'), capped at 100 players
  */
 export const getEarningsLeaderboard = async (req, res) => {
   try {
@@ -137,9 +145,23 @@ export const getEarningsLeaderboard = async (req, res) => {
 
     if (period === 'ALLTIME') {
       const [rows] = await pool.query(
-        `SELECT id as user_id, user_id as public_id, name, profile_pic, balance as score
-         FROM users WHERE is_banned = FALSE AND balance > 0
-         ORDER BY balance DESC LIMIT 100`
+        `SELECT 
+           u.id as user_id,
+           u.user_id as public_id,
+           u.name,
+           u.profile_pic,
+           COALESCE(SUM(t.amount), 0) as score
+         FROM users u
+         JOIN transactions t ON u.id = t.user_id
+         WHERE t.type = 'CREDIT' 
+           AND t.source NOT LIKE '%STREAK%' 
+           AND t.source NOT LIKE '%SPIN%' 
+           AND t.source NOT LIKE '%CONTEST%'
+           AND u.is_banned = FALSE
+         GROUP BY u.id
+         HAVING score > 0
+         ORDER BY score DESC
+         LIMIT 100`
       );
       const rankings = rows.map((row, index) => ({
         rank: index + 1,
@@ -155,9 +177,26 @@ export const getEarningsLeaderboard = async (req, res) => {
         if (myIndex !== -1) {
           myRankInfo = rankings[myIndex];
         } else {
-          const [myUser] = await pool.query(`SELECT balance FROM users WHERE id = ?`, [userId]);
-          const myScore = parseFloat(myUser[0]?.balance) || 0;
-          const [rankRes] = await pool.query(`SELECT COUNT(*) + 1 as rank FROM users WHERE balance > ? AND is_banned = FALSE`, [myScore]);
+          const [myScoreRes] = await pool.query(
+            `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t 
+             WHERE user_id = ? AND type = 'CREDIT' 
+               AND t.source NOT LIKE '%STREAK%' 
+               AND t.source NOT LIKE '%SPIN%' 
+               AND t.source NOT LIKE '%CONTEST%'`,
+            [userId]
+          );
+          const myScore = parseFloat(myScoreRes[0]?.score) || 0;
+          const [rankRes] = await pool.query(
+            `SELECT COUNT(DISTINCT user_id) + 1 as rank FROM (
+               SELECT user_id, SUM(amount) as total FROM transactions t 
+               WHERE type = 'CREDIT' 
+                 AND t.source NOT LIKE '%STREAK%' 
+                 AND t.source NOT LIKE '%SPIN%' 
+                 AND t.source NOT LIKE '%CONTEST%'
+               GROUP BY user_id HAVING total > ?
+             ) higher`,
+            [myScore]
+          );
           myRankInfo = { rank: rankRes[0]?.rank || 0, name: req.user?.name || 'You', total_earnings: myScore };
         }
       }
@@ -219,7 +258,7 @@ export const getEarningsLeaderboard = async (req, res) => {
       }
     }
 
-    // Query top earnings filtered by minScore threshold
+    // Query top earnings filtered by minScore threshold & excluding streak, spin, and contest earnings
     const [rows] = await pool.query(
       `SELECT 
          u.id as user_id,
@@ -229,7 +268,12 @@ export const getEarningsLeaderboard = async (req, res) => {
          COALESCE(SUM(t.amount), 0) as score
        FROM users u
        JOIN transactions t ON u.id = t.user_id
-       WHERE t.type = 'CREDIT' AND u.is_banned = FALSE AND ${dateCondition}
+       WHERE t.type = 'CREDIT' 
+         AND t.source NOT LIKE '%STREAK%' 
+         AND t.source NOT LIKE '%SPIN%' 
+         AND t.source NOT LIKE '%CONTEST%'
+         AND u.is_banned = FALSE 
+         AND ${dateCondition}
        GROUP BY u.id
        HAVING score >= ?
        ORDER BY score DESC
@@ -253,7 +297,12 @@ export const getEarningsLeaderboard = async (req, res) => {
         myRankInfo = rankings[myIndex];
       } else {
         const [myScoreRes] = await pool.query(
-          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t WHERE user_id = ? AND type = 'CREDIT' AND ${dateCondition}`,
+          `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t 
+           WHERE user_id = ? AND type = 'CREDIT' 
+             AND t.source NOT LIKE '%STREAK%' 
+             AND t.source NOT LIKE '%SPIN%' 
+             AND t.source NOT LIKE '%CONTEST%'
+             AND ${dateCondition}`,
           [userId]
         );
         const myScore = parseFloat(myScoreRes[0]?.score) || 0;
@@ -261,7 +310,11 @@ export const getEarningsLeaderboard = async (req, res) => {
         const [rankRes] = await pool.query(
           `SELECT COUNT(DISTINCT user_id) + 1 as rank FROM (
              SELECT user_id, SUM(amount) as total FROM transactions t 
-             WHERE type = 'CREDIT' AND ${dateCondition}
+             WHERE type = 'CREDIT' 
+               AND t.source NOT LIKE '%STREAK%' 
+               AND t.source NOT LIKE '%SPIN%' 
+               AND t.source NOT LIKE '%CONTEST%'
+               AND ${dateCondition}
              GROUP BY user_id HAVING total > ?
            ) higher`,
           [myScore]
@@ -309,7 +362,10 @@ export const getUserLeaderboardProfile = async (req, res) => {
          COALESCE(SUM(CASE WHEN YEARWEEK(t.created_at, 1) = YEARWEEK(CURRENT_DATE(), 1) THEN t.amount ELSE 0 END), 0) as weekly,
          COALESCE(SUM(CASE WHEN MONTH(t.created_at) = MONTH(CURRENT_DATE()) AND YEAR(t.created_at) = YEAR(CURRENT_DATE()) THEN t.amount ELSE 0 END), 0) as monthly
        FROM transactions t
-       WHERE t.user_id = ? AND t.type = 'CREDIT'`,
+       WHERE t.user_id = ? AND t.type = 'CREDIT'
+         AND t.source NOT LIKE '%STREAK%' 
+         AND t.source NOT LIKE '%SPIN%' 
+         AND t.source NOT LIKE '%CONTEST%'`,
       [userId]
     );
 
@@ -471,7 +527,12 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
          COALESCE(SUM(t.amount), 0) as score
        FROM users u
        JOIN transactions t ON u.id = t.user_id
-       WHERE t.type = 'CREDIT' AND u.is_banned = FALSE AND ${dateCondition}
+       WHERE t.type = 'CREDIT' 
+         AND t.source NOT LIKE '%STREAK%' 
+         AND t.source NOT LIKE '%SPIN%' 
+         AND t.source NOT LIKE '%CONTEST%'
+         AND u.is_banned = FALSE 
+         AND ${dateCondition}
        GROUP BY u.id
        HAVING score >= ?
        ORDER BY score DESC
@@ -527,7 +588,12 @@ export const distributeRewardsAdmin = async (req, res) => {
       `SELECT u.id, u.name, COALESCE(SUM(t.amount), 0) as score
        FROM users u
        JOIN transactions t ON u.id = t.user_id
-       WHERE t.type = 'CREDIT' AND u.is_banned = FALSE AND ${dateCondition}
+       WHERE t.type = 'CREDIT' 
+         AND t.source NOT LIKE '%STREAK%' 
+         AND t.source NOT LIKE '%SPIN%' 
+         AND t.source NOT LIKE '%CONTEST%'
+         AND u.is_banned = FALSE 
+         AND ${dateCondition}
        GROUP BY u.id
        HAVING score >= ?
        ORDER BY score DESC
