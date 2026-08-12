@@ -21,6 +21,12 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
   const [players, setPlayers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const resolveBaseUrl = () => {
+    if (typeof apiBase === 'string' && apiBase.trim() !== '' && apiBase !== 'undefined') return apiBase;
+    if (typeof API_BASE === 'string' && API_BASE.trim() !== '' && API_BASE !== 'undefined') return API_BASE;
+    return 'https://api-rewardverse.satyainfotechnetworks.com';
+  };
+
   const resolveHeaders = () => {
     if (typeof getHeaders === 'function') return getHeaders();
     const token = localStorage.getItem('adminToken');
@@ -32,7 +38,7 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
 
   const fetchDashboardStats = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/leaderboard/dashboard`, { headers: resolveHeaders() });
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/dashboard`, { headers: resolveHeaders() });
       const data = await res.json();
       if (data.success && data.stats) setStats(data.stats);
     } catch (e) {
@@ -42,7 +48,7 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
 
   const fetchLeaderboardConfigs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/leaderboard/list`, { headers: resolveHeaders() });
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/list`, { headers: resolveHeaders() });
       const data = await res.json();
       if (data.success && data.leaderboards && data.leaderboards.length > 0) {
         setLeaderboardConfigs(data.leaderboards);
@@ -55,7 +61,7 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
   const fetchTopPlayers = async (period) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/leaderboard/participants?period=${period}`, { headers: resolveHeaders() });
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/participants?period=${period}`, { headers: resolveHeaders() });
       const data = await res.json();
       if (data.success && data.players) {
         setPlayers(data.players);
@@ -83,7 +89,7 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
 
   const handleSaveConfig = async (config) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/leaderboard/save`, {
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/save`, {
         method: 'POST',
         headers: resolveHeaders(),
         body: JSON.stringify(config)
@@ -105,7 +111,7 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/admin/leaderboard/distribute`, {
+      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/distribute`, {
         method: 'POST',
         headers: resolveHeaders(),
         body: JSON.stringify({ period })
