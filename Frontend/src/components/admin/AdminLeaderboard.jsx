@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Trophy, Award, Users, DollarSign, Settings, RefreshCw, 
-  Send, CheckCircle, AlertCircle, Calendar, Filter, Save, Layers, Search
+  Send, CheckCircle, AlertCircle, Calendar, Save, Layers, Search
 } from 'lucide-react';
-import { API_BASE } from '../../config';
 
-const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
+export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedPeriod, setSelectedPeriod] = useState('DAILY');
   const [loading, setLoading] = useState(false);
@@ -70,9 +69,7 @@ const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
 
   const [players, setPlayers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [notificationMsg, setNotificationMsg] = useState(null);
 
-  const resolveBaseUrl = () => apiBase || API_BASE || '';
   const resolveHeaders = () => {
     if (typeof getHeaders === 'function') return getHeaders();
     const token = localStorage.getItem('adminToken');
@@ -82,11 +79,44 @@ const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
     };
   };
 
-  const notify = (type, text) => {
-    if (typeof showNotice === 'function') {
-      showNotice(text, type);
+  const fetchDashboardStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/leaderboard/dashboard`, { headers: resolveHeaders() });
+      const data = await res.json();
+      if (data.success && data.stats) setStats(data.stats);
+    } catch (e) {
+      console.error('Error fetching dashboard stats:', e);
     }
-    setNotificationMsg({ type, text });
+  };
+
+  const fetchLeaderboardConfigs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/leaderboard/list`, { headers: resolveHeaders() });
+      const data = await res.json();
+      if (data.success && data.leaderboards && data.leaderboards.length > 0) {
+        setLeaderboardConfigs(data.leaderboards);
+      }
+    } catch (e) {
+      console.error('Error fetching configs:', e);
+    }
+  };
+
+  const fetchTopPlayers = async (period) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/leaderboard/participants?period=${period}`, { headers: resolveHeaders() });
+      const data = await res.json();
+      if (data.success && data.players) {
+        setPlayers(data.players);
+      } else {
+        setPlayers([]);
+      }
+    } catch (e) {
+      console.error('Error fetching players:', e);
+      setPlayers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -95,54 +125,6 @@ const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
     fetchTopPlayers(selectedPeriod);
   }, []);
 
-  const fetchDashboardStats = async () => {
-    try {
-      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/dashboard`, {
-        headers: resolveHeaders()
-      });
-      const data = await res.json();
-      if (data.success && data.stats) {
-        setStats(data.stats);
-      }
-    } catch (e) {
-      console.error('Error fetching admin leaderboard stats:', e);
-    }
-  };
-
-  const fetchLeaderboardConfigs = async () => {
-    try {
-      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/list`, {
-        headers: resolveHeaders()
-      });
-      const data = await res.json();
-      if (data.success && data.leaderboards && data.leaderboards.length > 0) {
-        setLeaderboardConfigs(data.leaderboards);
-      }
-    } catch (e) {
-      console.error('Error fetching leaderboard configs:', e);
-    }
-  };
-
-  const fetchTopPlayers = async (period) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/participants?period=${period}`, {
-        headers: resolveHeaders()
-      });
-      const data = await res.json();
-      if (data.success && data.players) {
-        setPlayers(data.players);
-      } else {
-        setPlayers([]);
-      }
-    } catch (e) {
-      console.error('Error fetching top players:', e);
-      setPlayers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handlePeriodChange = (period) => {
     setSelectedPeriod(period);
     fetchTopPlayers(period);
@@ -150,21 +132,20 @@ const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
 
   const handleSaveConfig = async (config) => {
     try {
-      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/save`, {
+      const res = await fetch(`${API_BASE}/api/admin/leaderboard/save`, {
         method: 'POST',
         headers: resolveHeaders(),
         body: JSON.stringify(config)
       });
       const data = await res.json();
       if (data.success) {
-        notify('success', `Saved configuration for ${config.period} Leaderboard!`);
+        if (typeof showNotice === 'function') showNotice('success', `Saved ${config.period} settings!`);
         fetchLeaderboardConfigs();
       } else {
-        notify('error', data.message || 'Failed to save config.');
+        if (typeof showNotice === 'function') showNotice('error', data.message || 'Failed to save config.');
       }
     } catch (e) {
-      console.error('Error saving config:', e);
-      notify('error', 'Error connecting to server.');
+      if (typeof showNotice === 'function') showNotice('error', 'Error connecting to server.');
     }
   };
 
@@ -173,21 +154,20 @@ const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${resolveBaseUrl()}/api/admin/leaderboard/distribute`, {
+      const res = await fetch(`${API_BASE}/api/admin/leaderboard/distribute`, {
         method: 'POST',
         headers: resolveHeaders(),
         body: JSON.stringify({ period })
       });
       const data = await res.json();
       if (data.success) {
-        notify('success', data.message);
+        if (typeof showNotice === 'function') showNotice('success', data.message);
         fetchDashboardStats();
       } else {
-        notify('error', data.message || 'Failed to distribute rewards.');
+        if (typeof showNotice === 'function') showNotice('error', data.message || 'Failed to distribute rewards.');
       }
     } catch (e) {
-      console.error('Error distributing rewards:', e);
-      notify('error', 'Error executing payout transaction.');
+      if (typeof showNotice === 'function') showNotice('error', 'Error executing payout transaction.');
     } finally {
       setLoading(false);
     }
@@ -200,354 +180,289 @@ const AdminLeaderboard = ({ apiBase, getHeaders, showNotice }) => {
   );
 
   return (
-    <div className="p-6 bg-slate-900 text-white min-h-screen">
+    <div>
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-gradient-to-r from-purple-900/60 via-indigo-900/60 to-slate-800 p-6 rounded-2xl border border-purple-500/20 shadow-xl">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <Trophy className="w-8 h-8 text-yellow-400 animate-bounce" />
-            <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-yellow-300 via-amber-200 to-white bg-clip-text text-transparent">
-              Leaderboard Management
-            </h1>
-          </div>
-          <p className="text-slate-300 text-sm">
-            Manage Daily, Weekly, and Monthly Leaderboards, coin qualification thresholds, reward tiers, and automated payouts.
+          <h3 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary, #fff)' }}>
+            <Trophy size={20} style={{ color: '#f59e0b' }} /> Leaderboard Management
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
+            Manage Daily, Weekly, Monthly, and All Time Leaderboards, thresholds, and payouts.
           </p>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => { fetchDashboardStats(); fetchTopPlayers(selectedPeriod); }}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium border border-slate-700 transition"
-          >
-            <RefreshCw className="w-4 h-4" /> Refresh
-          </button>
-        </div>
+        <button 
+          className="btn btn-secondary"
+          onClick={() => { fetchDashboardStats(); fetchTopPlayers(selectedPeriod); }}
+          style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <RefreshCw size={14} /> Refresh
+        </button>
       </div>
 
-      {/* Notifications */}
-      {notificationMsg && (
-        <div className={`p-4 rounded-xl mb-6 flex items-center justify-between ${notificationMsg.type === 'success' ? 'bg-emerald-950/80 border border-emerald-500/40 text-emerald-200' : 'bg-red-950/80 border border-red-500/40 text-red-200'}`}>
-          <div className="flex items-center gap-2">
-            {notificationMsg.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-400" /> : <AlertCircle className="w-5 h-5 text-red-400" />}
-            <span className="text-sm font-medium">{notificationMsg.text}</span>
-          </div>
-          <button onClick={() => setNotificationMsg(null)} className="text-xs underline hover:opacity-80">Dismiss</button>
-        </div>
-      )}
-
-      {/* KPI Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-        <div className="bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Active Timeframes</span>
-            <div className="p-2 bg-purple-500/20 text-purple-400 rounded-lg"><Layers className="w-5 h-5" /></div>
-          </div>
-          <div className="text-3xl font-extrabold text-white">Daily / Wk / Mo</div>
-          <div className="text-xs text-emerald-400 mt-2 flex items-center gap-1 font-medium">3 Active Pools</div>
+      {/* KPI Stats Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div className="glass-panel" style={{ padding: '18px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', marginBottom: '6px' }}>Active Timeframes</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-primary, #fff)' }}>Daily / Wk / Mo</div>
+          <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>3 Active Pools</div>
         </div>
 
-        <div className="bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Qualified Players</span>
-            <div className="p-2 bg-blue-500/20 text-blue-400 rounded-lg"><Users className="w-5 h-5" /></div>
-          </div>
-          <div className="text-3xl font-extrabold text-white">{players.length} Users</div>
-          <div className="text-xs text-slate-400 mt-2">Top 100 Per Timeframe</div>
+        <div className="glass-panel" style={{ padding: '18px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', marginBottom: '6px' }}>Qualified Players</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-primary, #fff)' }}>{players.length} Players</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>Top 100 Per Timeframe</div>
         </div>
 
-        <div className="bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Active Prize Pool</span>
-            <div className="p-2 bg-amber-500/20 text-amber-400 rounded-lg"><DollarSign className="w-5 h-5" /></div>
-          </div>
-          <div className="text-3xl font-extrabold text-amber-300">
+        <div className="glass-panel" style={{ padding: '18px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', marginBottom: '6px' }}>Active Prize Pool</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#f59e0b' }}>
             {stats.prize_pool_coins ? stats.prize_pool_coins.toLocaleString() : '70,000'} Coins
           </div>
-          <div className="text-xs text-amber-400/80 mt-2 font-medium">Global Dynamic Allocation</div>
+          <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '4px' }}>Global Dynamic Allocation</div>
         </div>
 
-        <div className="bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl shadow-lg">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Rewards Paid</span>
-            <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg"><Award className="w-5 h-5" /></div>
-          </div>
-          <div className="text-3xl font-extrabold text-emerald-400">{stats.rewards_distributed || 0} Payouts</div>
-          <div className="text-xs text-emerald-400/80 mt-2">Distributed to winners</div>
+        <div className="glass-panel" style={{ padding: '18px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', textTransform: 'uppercase', marginBottom: '6px' }}>Total Payouts Given</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#10b981' }}>{stats.rewards_distributed || 0} Rewards</div>
+          <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>Distributed to winners</div>
         </div>
       </div>
 
-      {/* Main Tab Navigation */}
-      <div className="flex border-b border-slate-800 gap-2 mb-6">
+      {/* Tab Controls */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', pb: '8px' }}>
         <button
+          className={activeTab === 'overview' ? 'btn btn-primary' : 'btn btn-secondary'}
           onClick={() => setActiveTab('overview')}
-          className={`px-5 py-3 font-semibold text-sm rounded-t-xl transition border-b-2 ${activeTab === 'overview' ? 'bg-purple-900/30 text-purple-300 border-purple-500' : 'text-slate-400 border-transparent hover:text-slate-200'}`}
+          style={{ padding: '8px 16px', fontSize: '0.85rem' }}
         >
-          <div className="flex items-center gap-2"><Layers className="w-4 h-4" /> Overview & Quick Payout</div>
+          Overview & Distribute
         </button>
         <button
+          className={activeTab === 'builder' ? 'btn btn-primary' : 'btn btn-secondary'}
           onClick={() => setActiveTab('builder')}
-          className={`px-5 py-3 font-semibold text-sm rounded-t-xl transition border-b-2 ${activeTab === 'builder' ? 'bg-purple-900/30 text-purple-300 border-purple-500' : 'text-slate-400 border-transparent hover:text-slate-200'}`}
+          style={{ padding: '8px 16px', fontSize: '0.85rem' }}
         >
-          <div className="flex items-center gap-2"><Settings className="w-4 h-4" /> Period & Tier Configurator</div>
+          Period & Tier Configurator
         </button>
         <button
+          className={activeTab === 'players' ? 'btn btn-primary' : 'btn btn-secondary'}
           onClick={() => setActiveTab('players')}
-          className={`px-5 py-3 font-semibold text-sm rounded-t-xl transition border-b-2 ${activeTab === 'players' ? 'bg-purple-900/30 text-purple-300 border-purple-500' : 'text-slate-400 border-transparent hover:text-slate-200'}`}
+          style={{ padding: '8px 16px', fontSize: '0.85rem' }}
         >
-          <div className="flex items-center gap-2"><Users className="w-4 h-4" /> Live Top 100 Players</div>
+          Live Top 100 Players
         </button>
       </div>
 
-      {/* Tab 1: Overview & Quick Payout */}
+      {/* Tab 1: Overview */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800/60 border border-slate-700/80 p-6 rounded-2xl">
-            <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-400" /> Leaderboard Timeframes & Manual Distribute
-            </h2>
-            <p className="text-slate-400 text-sm mb-6">
-              Select a period below to distribute rewards to Top 100 players based on configured reward tiers.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {['DAILY', 'WEEKLY', 'MONTHLY'].map((periodKey) => {
-                const config = leaderboardConfigs.find(c => c.period === periodKey) || {};
-                return (
-                  <div key={periodKey} className="bg-slate-900/80 border border-slate-700/90 p-5 rounded-2xl flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-bold px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full uppercase tracking-wider">
-                          {periodKey}
-                        </span>
-                        <span className="text-xs text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
-                          Active
-                        </span>
-                      </div>
-                      <h3 className="text-lg font-bold text-white mb-1">{config.name || `${periodKey} Leaderboard`}</h3>
-                      <div className="space-y-1 my-3 text-xs text-slate-300">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Min Coin Threshold:</span>
-                          <span className="font-semibold text-amber-300">{config.minimum_score || 0} Coins</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Total Prize Pool:</span>
-                          <span className="font-semibold text-emerald-400">{(config.reward_pool || 0).toLocaleString()} Coins</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Max Winners:</span>
-                          <span className="font-semibold text-slate-200">{config.max_winners || 100} Players</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleDistributeRewards(periodKey)}
-                      disabled={loading}
-                      className="w-full mt-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
-                    >
-                      <Send className="w-4 h-4" /> Distribute {periodKey} Rewards
-                    </button>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+          {['DAILY', 'WEEKLY', 'MONTHLY'].map((periodKey) => {
+            const config = leaderboardConfigs.find(c => c.period === periodKey) || {};
+            return (
+              <div key={periodKey} className="glass-panel" style={{ padding: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', background: 'rgba(168,85,247,0.2)', color: '#c084fc', padding: '3px 10px', borderRadius: '12px' }}>
+                    {periodKey}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px' }}>Active</span>
+                </div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', color: 'var(--text-primary, #fff)' }}>{config.name || `${periodKey} Leaderboard`}</h4>
+                
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #94a3b8)', lineHeight: '1.8' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Min Coin Threshold:</span>
+                    <strong style={{ color: '#f59e0b' }}>{config.minimum_score || 0} Coins</strong>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 2: Period & Tier Configurator */}
-      {activeTab === 'builder' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800/60 border border-slate-700/80 p-6 rounded-2xl">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-purple-400" /> Threshold & Global Tier Builder
-            </h2>
-
-            <div className="space-y-6">
-              {leaderboardConfigs.map((config, index) => (
-                <div key={config.period || index} className="bg-slate-900/90 border border-slate-700/90 p-5 rounded-2xl">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                    <h3 className="text-lg font-bold text-amber-300 flex items-center gap-2">
-                      <Trophy className="w-5 h-5 text-amber-400" /> {config.name || `${config.period} Leaderboard`}
-                    </h3>
-                    <button
-                      onClick={() => handleSaveConfig(config)}
-                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5"
-                    >
-                      <Save className="w-3.5 h-3.5" /> Save {config.period} Config
-                    </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Total Prize Pool:</span>
+                    <strong style={{ color: '#10b981' }}>{(config.reward_pool || 0).toLocaleString()} Coins</strong>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-                    <div>
-                      <label className="text-xs text-slate-400 mb-1 block">Minimum Coin Threshold</label>
-                      <input
-                        type="number"
-                        value={config.minimum_score}
-                        onChange={(e) => {
-                          const updated = [...leaderboardConfigs];
-                          updated[index].minimum_score = parseFloat(e.target.value) || 0;
-                          setLeaderboardConfigs(updated);
-                        }}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
-                        placeholder="e.g. 50"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-1 block">Users need min this many coins to appear</span>
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-slate-400 mb-1 block">Total Prize Pool (Coins)</label>
-                      <input
-                        type="number"
-                        value={config.reward_pool}
-                        onChange={(e) => {
-                          const updated = [...leaderboardConfigs];
-                          updated[index].reward_pool = parseFloat(e.target.value) || 0;
-                          setLeaderboardConfigs(updated);
-                        }}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
-                        placeholder="e.g. 5000"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs text-slate-400 mb-1 block">Max Winners Limit</label>
-                      <input
-                        type="number"
-                        value={config.max_winners || 100}
-                        onChange={(e) => {
-                          const updated = [...leaderboardConfigs];
-                          updated[index].max_winners = parseInt(e.target.value) || 100;
-                          setLeaderboardConfigs(updated);
-                        }}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Tiers Breakdown */}
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Reward Tiers Breakdown</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                      {(config.tiers || []).map((tier, tierIdx) => (
-                        <div key={tierIdx} className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/60">
-                          <span className="text-[11px] font-bold text-indigo-300 block mb-1">
-                            Rank {tier.start_rank} {tier.end_rank > tier.start_rank ? `- ${tier.end_rank}` : ''}
-                          </span>
-                          <input
-                            type="number"
-                            value={tier.reward_coins}
-                            onChange={(e) => {
-                              const updated = [...leaderboardConfigs];
-                              updated[index].tiers[tierIdx].reward_coins = parseFloat(e.target.value) || 0;
-                              setLeaderboardConfigs(updated);
-                            }}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-semibold focus:outline-none"
-                          />
-                          <span className="text-[10px] text-slate-500 mt-1 block">Coins / winner</span>
-                        </div>
-                      ))}
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Max Winners:</span>
+                    <span>{config.max_winners || 100} Players</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={() => handleDistributeRewards(periodKey)}
+                  disabled={loading}
+                  style={{ width: '100%', marginTop: '16px', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  <Send size={14} /> Distribute {periodKey} Rewards
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Tab 3: Live Top 100 Players */}
-      {activeTab === 'players' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800/60 border border-slate-700/80 p-6 rounded-2xl">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-blue-400" /> Qualified Top 100 Players
-                </h2>
-                <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-700">
-                  {['DAILY', 'WEEKLY', 'MONTHLY'].map(p => (
-                    <button
-                      key={p}
-                      onClick={() => handlePeriodChange(p)}
-                      className={`px-3 py-1 text-xs font-bold rounded-lg transition ${selectedPeriod === p ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                    >
-                      {p}
-                    </button>
+      {/* Tab 2: Configurator */}
+      {activeTab === 'builder' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {leaderboardConfigs.map((config, index) => (
+            <div key={config.period || index} className="glass-panel" style={{ padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px' }}>
+                <h4 style={{ margin: 0, color: '#f59e0b', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Trophy size={16} /> {config.name || `${config.period} Leaderboard`}
+                </h4>
+                <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '0.8rem' }} onClick={() => handleSaveConfig(config)}>
+                  <Save size={14} /> Save Config
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>Min Coin Threshold</label>
+                  <input
+                    type="number"
+                    className="glass-input"
+                    value={config.minimum_score}
+                    onChange={(e) => {
+                      const updated = [...leaderboardConfigs];
+                      updated[index].minimum_score = parseFloat(e.target.value) || 0;
+                      setLeaderboardConfigs(updated);
+                    }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>Prize Pool (Coins)</label>
+                  <input
+                    type="number"
+                    className="glass-input"
+                    value={config.reward_pool}
+                    onChange={(e) => {
+                      const updated = [...leaderboardConfigs];
+                      updated[index].reward_pool = parseFloat(e.target.value) || 0;
+                      setLeaderboardConfigs(updated);
+                    }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem' }}>Max Winners Limit</label>
+                  <input
+                    type="number"
+                    className="glass-input"
+                    value={config.max_winners || 100}
+                    onChange={(e) => {
+                      const updated = [...leaderboardConfigs];
+                      updated[index].max_winners = parseInt(e.target.value) || 100;
+                      setLeaderboardConfigs(updated);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '8px', display: 'block' }}>Reward Tiers Breakdown</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
+                  {(config.tiers || []).map((tier, tierIdx) => (
+                    <div key={tierIdx} style={{ background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#a78bfa', display: 'block', marginBottom: '4px' }}>
+                        Rank {tier.start_rank} {tier.end_rank > tier.start_rank ? `- ${tier.end_rank}` : ''}
+                      </span>
+                      <input
+                        type="number"
+                        className="glass-input"
+                        style={{ padding: '4px 8px', fontSize: '0.8rem', color: '#10b981', fontWeight: 'bold' }}
+                        value={tier.reward_coins}
+                        onChange={(e) => {
+                          const updated = [...leaderboardConfigs];
+                          updated[index].tiers[tierIdx].reward_coins = parseFloat(e.target.value) || 0;
+                          setLeaderboardConfigs(updated);
+                        }}
+                      />
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted, #64748b)', display: 'block', marginTop: '2px' }}>Coins / winner</span>
+                    </div>
                   ))}
                 </div>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-              <div className="relative w-full md:w-64">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  placeholder="Search user..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
+      {/* Tab 3: Players */}
+      {activeTab === 'players' && (
+        <div className="glass-panel" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {['DAILY', 'WEEKLY', 'MONTHLY', 'ALLTIME'].map(p => (
+                <button
+                  key={p}
+                  className={selectedPeriod === p ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ padding: '5px 12px', fontSize: '0.78rem' }}
+                  onClick={() => handlePeriodChange(p)}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
 
-            {loading ? (
-              <div className="text-center py-12 text-slate-400 text-sm">Loading players...</div>
-            ) : filteredPlayers.length === 0 ? (
-              <div className="text-center py-12 text-slate-500 text-sm">
-                No qualified players found for {selectedPeriod} period meeting the minimum coin threshold.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-900/80 text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-700">
-                    <tr>
-                      <th className="p-3">Rank</th>
-                      <th className="p-3">User</th>
-                      <th className="p-3">Public Hex ID</th>
-                      <th className="p-3">Email</th>
-                      <th className="p-3 text-right">Period Earnings</th>
-                      <th className="p-3 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {filteredPlayers.map((player) => (
-                      <tr key={player.id} className="hover:bg-slate-800/40 transition">
-                        <td className="p-3 font-bold">
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] ${player.rank === 1 ? 'bg-amber-400/20 text-amber-300 border border-amber-500/40' : player.rank === 2 ? 'bg-slate-300/20 text-slate-200 border border-slate-400/40' : player.rank === 3 ? 'bg-amber-700/20 text-amber-400 border border-amber-700/40' : 'bg-slate-800 text-slate-300'}`}>
-                            #{player.rank}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2.5">
-                            <img
-                              src={player.profile_pic || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name || 'User')}`}
-                              alt=""
-                              className="w-7 h-7 rounded-full border border-slate-700"
-                            />
-                            <span className="font-semibold text-white">{player.name || 'User'}</span>
-                          </div>
-                        </td>
-                        <td className="p-3 font-mono text-indigo-300">{player.public_id || player.id.substring(0, 8)}</td>
-                        <td className="p-3 text-slate-400">{player.email || 'N/A'}</td>
-                        <td className="p-3 text-right font-extrabold text-emerald-400">
-                          {player.score.toLocaleString()} Coins
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="px-2 py-0.5 text-[10px] bg-emerald-950 text-emerald-300 rounded border border-emerald-500/30">
-                            Qualified
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <input
+              type="text"
+              className="glass-input"
+              placeholder="Search user..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ width: '220px', padding: '6px 12px', fontSize: '0.8rem' }}
+            />
           </div>
+
+          {loading ? (
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>Loading players...</p>
+          ) : filteredPlayers.length === 0 ? (
+            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>No players found for {selectedPeriod} period.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)', textAlign: 'left' }}>
+                    <th style={{ padding: '10px' }}>Rank</th>
+                    <th style={{ padding: '10px' }}>User</th>
+                    <th style={{ padding: '10px' }}>Public Hex ID</th>
+                    <th style={{ padding: '10px' }}>Email</th>
+                    <th style={{ padding: '10px', textAlign: 'right' }}>Score / Earnings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPlayers.map((player) => (
+                    <tr key={player.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={{ padding: '10px', fontWeight: 'bold' }}>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          fontSize: '0.75rem',
+                          background: player.rank === 1 ? 'rgba(245,158,11,0.2)' : player.rank === 2 ? 'rgba(255,255,255,0.1)' : player.rank === 3 ? 'rgba(205,127,50,0.2)' : 'rgba(255,255,255,0.03)',
+                          color: player.rank === 1 ? '#f59e0b' : player.rank === 2 ? '#e2e8f0' : player.rank === 3 ? '#cd7f32' : 'var(--text-secondary)'
+                        }}>
+                          #{player.rank}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <img
+                            src={player.profile_pic || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name || 'User')}`}
+                            alt=""
+                            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                          <span style={{ color: 'var(--text-primary, #fff)', fontWeight: '500' }}>{player.name || 'User'}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px', color: '#a78bfa', fontFamily: 'monospace' }}>{player.public_id || player.id.substring(0, 8)}</td>
+                      <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>{player.email || 'N/A'}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>
+                        {player.score.toLocaleString()} Coins
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
-};
-
-export default AdminLeaderboard;
+}
