@@ -144,41 +144,27 @@ export const getEarningsLeaderboard = async (req, res) => {
     const userId = req.user?.id;
 
     if (period === 'ALLTIME') {
-      let [rows] = await pool.query(
+      const [rows] = await pool.query(
         `SELECT 
            u.id as user_id,
            u.user_id as public_id,
            u.name,
            u.profile_pic,
-           COALESCE(SUM(t.amount), 0) as score
+           GREATEST(COALESCE(SUM(CASE WHEN UPPER(t.type) = 'CREDIT' THEN t.amount ELSE 0 END), 0), u.balance) as score
          FROM users u
-         JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
-         WHERE UPPER(t.type) = 'CREDIT' 
-           AND t.source NOT LIKE '%STREAK%' 
-           AND t.source NOT LIKE '%SPIN%' 
-           AND t.source NOT LIKE '%CONTEST%'
-           AND u.is_banned = FALSE
+         LEFT JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
+         WHERE u.is_banned = FALSE
          GROUP BY u.id
          HAVING score > 0
          ORDER BY score DESC
          LIMIT 100`
       );
 
-      console.log(`[Leaderboard ALLTIME] Transaction join rows returned: ${rows.length}`);
-
-      if (rows.length === 0) {
-        const [usersFallback] = await pool.query(
-          `SELECT id as user_id, user_id as public_id, name, profile_pic, balance as score
-           FROM users WHERE is_banned = FALSE AND balance > 0
-           ORDER BY balance DESC LIMIT 100`
-        );
-        console.log(`[Leaderboard ALLTIME] Fallback users.balance rows: ${usersFallback.length}`);
-        rows = usersFallback;
-      }
+      console.log(`[Leaderboard ALLTIME] Users returned: ${rows.length}`);
 
       const rankings = rows.map((row, index) => ({
         rank: index + 1,
-        user_id: row.public_id || (row.user_id ? String(row.user_id).substring(0, 8) : 'user'),
+        user_id: row.public_id || (row.user_id ? String(row.user_id).substring(0, 10) : 'user'),
         name: row.name || 'Anonymous User',
         profile_pic: row.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.name || 'User'),
         total_earnings: parseFloat(row.score)
@@ -190,20 +176,8 @@ export const getEarningsLeaderboard = async (req, res) => {
         if (myIndex !== -1) {
           myRankInfo = rankings[myIndex];
         } else {
-          const [myScoreRes] = await pool.query(
-            `SELECT COALESCE(SUM(amount), 0) as score FROM transactions t 
-             WHERE (t.user_id = ? OR t.user_id = (SELECT user_id FROM users WHERE id = ?)) 
-               AND UPPER(t.type) = 'CREDIT' 
-               AND t.source NOT LIKE '%STREAK%' 
-               AND t.source NOT LIKE '%SPIN%' 
-               AND t.source NOT LIKE '%CONTEST%'`,
-            [userId, userId]
-          );
-          let myScore = parseFloat(myScoreRes[0]?.score) || 0;
-          if (myScore === 0) {
-            const [uRes] = await pool.query(`SELECT balance FROM users WHERE id = ?`, [userId]);
-            myScore = parseFloat(uRes[0]?.balance) || 0;
-          }
+          const [uRes] = await pool.query(`SELECT balance FROM users WHERE id = ?`, [userId]);
+          const myScore = parseFloat(uRes[0]?.balance) || 0;
           myRankInfo = { rank: 1, name: req.user?.name || 'You', total_earnings: myScore };
         }
       }
@@ -537,36 +511,25 @@ export const getLeaderboardParticipantsAdmin = async (req, res) => {
       if (lbs.length > 0) minScore = parseFloat(lbs[0].minimum_score) || 0;
     }
 
-    let [players] = await pool.query(
+    const [players] = await pool.query(
       `SELECT 
-         u.id, u.user_id as public_id, u.name, u.email, u.profile_pic,
-         COALESCE(SUM(t.amount), 0) as score
+         u.id, 
+         u.user_id as public_id, 
+         u.name, 
+         u.email, 
+         u.profile_pic,
+         GREATEST(COALESCE(SUM(CASE WHEN UPPER(t.type) = 'CREDIT' AND ${dateCondition} THEN t.amount ELSE 0 END), 0), ${period === 'ALLTIME' ? 'u.balance' : '0'}) as score
        FROM users u
-       JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
-       WHERE UPPER(t.type) = 'CREDIT' 
-         AND t.source NOT LIKE '%STREAK%' 
-         AND t.source NOT LIKE '%SPIN%' 
-         AND t.source NOT LIKE '%CONTEST%'
-         AND u.is_banned = FALSE 
-         AND ${dateCondition}
+       LEFT JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
+       WHERE u.is_banned = FALSE 
        GROUP BY u.id
        HAVING score >= ?
-       ORDER BY score DESC
+       ORDER BY score DESC, u.created_at DESC
        LIMIT 100`,
       [minScore]
     );
 
     console.log(`[Admin Leaderboard Participants] period: ${period}, players count: ${players.length}`);
-
-    if (players.length === 0 && period === 'ALLTIME') {
-      const [usersFallback] = await pool.query(
-        `SELECT id, user_id as public_id, name, email, profile_pic, balance as score
-         FROM users WHERE is_banned = FALSE AND balance > 0
-         ORDER BY balance DESC LIMIT 100`
-      );
-      console.log(`[Admin Leaderboard ALLTIME Fallback] users count: ${usersFallback.length}`);
-      players = usersFallback;
-    }
 
     const formattedPlayers = players.map((p, idx) => ({
       rank: idx + 1,
