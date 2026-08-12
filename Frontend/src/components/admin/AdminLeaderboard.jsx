@@ -9,63 +9,14 @@ export default function AdminLeaderboard({ getHeaders, showNotice, API_BASE }) {
   const [selectedPeriod, setSelectedPeriod] = useState('DAILY');
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({
-    active_leaderboards: 3,
+    active_leaderboards: 0,
     participants: 0,
-    prize_pool_coins: 70000,
+    prize_pool_coins: 0,
     rewards_distributed: 0,
     total_reward_coins_given: 0
   });
 
-  const [leaderboardConfigs, setLeaderboardConfigs] = useState([
-    {
-      id: 'lb_daily_earnings',
-      name: 'Daily Earnings Leaderboard',
-      period: 'DAILY',
-      minimum_score: 50,
-      reward_pool: 5000,
-      max_winners: 100,
-      status: 'ACTIVE',
-      tiers: [
-        { start_rank: 1, end_rank: 1, reward_coins: 1500 },
-        { start_rank: 2, end_rank: 2, reward_coins: 1000 },
-        { start_rank: 3, end_rank: 3, reward_coins: 500 },
-        { start_rank: 4, end_rank: 10, reward_coins: 140 },
-        { start_rank: 11, end_rank: 100, reward_coins: 10 }
-      ]
-    },
-    {
-      id: 'lb_weekly_earnings',
-      name: 'Weekly Earnings Leaderboard',
-      period: 'WEEKLY',
-      minimum_score: 200,
-      reward_pool: 15000,
-      max_winners: 100,
-      status: 'ACTIVE',
-      tiers: [
-        { start_rank: 1, end_rank: 1, reward_coins: 4500 },
-        { start_rank: 2, end_rank: 2, reward_coins: 3000 },
-        { start_rank: 3, end_rank: 3, reward_coins: 1500 },
-        { start_rank: 4, end_rank: 10, reward_coins: 500 },
-        { start_rank: 11, end_rank: 100, reward_coins: 30 }
-      ]
-    },
-    {
-      id: 'lb_monthly_earnings',
-      name: 'Monthly Earnings Leaderboard',
-      period: 'MONTHLY',
-      minimum_score: 500,
-      reward_pool: 50000,
-      max_winners: 100,
-      status: 'ACTIVE',
-      tiers: [
-        { start_rank: 1, end_rank: 1, reward_coins: 15000 },
-        { start_rank: 2, end_rank: 2, reward_coins: 10000 },
-        { start_rank: 3, end_rank: 3, reward_coins: 5000 },
-        { start_rank: 4, end_rank: 10, reward_coins: 1500 },
-        { start_rank: 11, end_rank: 100, reward_coins: 100 }
-      ]
-    }
-  ]);
+  const [leaderboardConfigs, setLeaderboardConfigs] = useState([]);
 
   const [players, setPlayers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
