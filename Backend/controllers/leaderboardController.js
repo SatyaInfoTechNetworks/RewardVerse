@@ -150,7 +150,7 @@ export const getEarningsLeaderboard = async (req, res) => {
            u.user_id as public_id,
            u.name,
            u.profile_pic,
-           GREATEST(COALESCE(SUM(CASE WHEN UPPER(t.type) = 'CREDIT' THEN t.amount ELSE 0 END), 0), u.balance) as score
+           GREATEST(COALESCE(SUM(CASE WHEN UPPER(t.type) = 'CREDIT' THEN t.amount ELSE 0 END), 0), COALESCE(u.balance, 0)) as score
          FROM users u
          LEFT JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
          WHERE u.is_banned = FALSE
@@ -248,10 +248,10 @@ export const getEarningsLeaderboard = async (req, res) => {
          u.profile_pic,
          COALESCE(SUM(t.amount), 0) as score
        FROM users u
-       JOIN transactions t ON u.id = t.user_id
-       WHERE t.type = 'CREDIT' 
-         AND t.source NOT LIKE '%STREAK%' 
+       JOIN transactions t ON (t.user_id = u.id OR t.user_id = u.user_id OR t.user_id = u.uid)
+       WHERE UPPER(t.type) = 'CREDIT' 
          AND t.source NOT LIKE '%SPIN%' 
+         AND t.source NOT LIKE '%STREAK%' 
          AND t.source NOT LIKE '%CONTEST%'
          AND u.is_banned = FALSE 
          AND ${dateCondition}
@@ -264,7 +264,7 @@ export const getEarningsLeaderboard = async (req, res) => {
 
     const rankings = rows.map((row, index) => ({
       rank: index + 1,
-      user_id: row.public_id || row.user_id.substring(0, 8),
+      user_id: row.public_id || (row.user_id ? String(row.user_id).substring(0, 10) : 'user'),
       name: row.name || 'Anonymous User',
       profile_pic: row.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.name || 'User'),
       total_earnings: parseFloat(row.score)
