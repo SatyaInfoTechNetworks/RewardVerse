@@ -893,6 +893,36 @@ export async function initializeDatabase() {
          VALUES ('telegram_bot_username', 'rewardverse_verification_bot', 'Telegram bot username for task verification')
          ON DUPLICATE KEY UPDATE config_value = IF(config_value = 'stuearn_bot' OR config_value = 'sit_verification_bot', 'rewardverse_verification_bot', config_value)`
       );
+      // Seed default Leaderboards if empty
+      const [existingLbs] = await connection.query(`SELECT COUNT(*) as count FROM leaderboards`);
+      if (existingLbs[0].count === 0) {
+        console.log('🌱 Seeding default Leaderboards (Daily, Weekly, Monthly)...');
+        const defaultLbs = [
+          { id: 'lb_daily_earnings', name: 'Daily Earnings Leaderboard', type: 'EARNINGS', period: 'DAILY', minimum_score: 50.00, reward_pool: 5000.00, max_winners: 100 },
+          { id: 'lb_weekly_earnings', name: 'Weekly Earnings Leaderboard', type: 'EARNINGS', period: 'WEEKLY', minimum_score: 200.00, reward_pool: 15000.00, max_winners: 100 },
+          { id: 'lb_monthly_earnings', name: 'Monthly Earnings Leaderboard', type: 'EARNINGS', period: 'MONTHLY', minimum_score: 500.00, reward_pool: 50000.00, max_winners: 100 }
+        ];
+        for (const lb of defaultLbs) {
+          await connection.query(
+            `INSERT INTO leaderboards (id, name, type, period, minimum_score, reward_pool, max_winners, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE')`,
+            [lb.id, lb.name, lb.type, lb.period, lb.minimum_score, lb.reward_pool, lb.max_winners]
+          );
+          const tiers = [
+            { start_rank: 1, end_rank: 1, reward_coins: lb.reward_pool * 0.30 },
+            { start_rank: 2, end_rank: 2, reward_coins: lb.reward_pool * 0.20 },
+            { start_rank: 3, end_rank: 3, reward_coins: lb.reward_pool * 0.10 },
+            { start_rank: 4, end_rank: 10, reward_coins: (lb.reward_pool * 0.20) / 7 },
+            { start_rank: 11, end_rank: 100, reward_coins: (lb.reward_pool * 0.20) / 90 }
+          ];
+          for (const t of tiers) {
+            await connection.query(
+              `INSERT INTO leaderboard_reward_tiers (id, leaderboard_id, start_rank, end_rank, reward_coins) VALUES (UUID(), ?, ?, ?, ?)`,
+              [lb.id, t.start_rank, t.end_rank, Math.round(t.reward_coins)]
+            );
+          }
+        }
+        console.log('✅ Default Leaderboards seeded successfully.');
+      }
     } catch (confErr) {
       console.log('⚠️ Error seeding default configurations:', confErr.message);
     }
