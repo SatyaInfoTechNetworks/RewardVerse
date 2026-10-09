@@ -117,9 +117,9 @@ export const listUsers = async (req, res) => {
     const params = [];
 
     if (search) {
-      where.push('(u.name LIKE ? OR u.email LIKE ? OR u.referral_code LIKE ? OR u.user_id LIKE ?)');
+      where.push('(u.name LIKE ? OR u.email LIKE ? OR u.referral_code LIKE ? OR u.user_id LIKE ? OR u.uid LIKE ? OR u.id LIKE ? OR u.phone_number LIKE ? OR u.android_id LIKE ?)');
       const sw = `%${search.trim()}%`;
-      params.push(sw, sw, sw, sw);
+      params.push(sw, sw, sw, sw, sw, sw, sw, sw);
     }
     if (status === 'banned') { where.push('u.is_banned = 1'); }
     else if (status === 'active') { where.push('(u.is_banned = 0 OR u.is_banned IS NULL)'); }
@@ -679,9 +679,9 @@ export const listWithdrawals = async (req, res) => {
     }
 
     if (search && search.trim() !== '') {
-      conditions.push('(u.name LIKE ? OR u.email LIKE ? OR w.details LIKE ? OR w.method LIKE ? OR w.id LIKE ?)');
+      conditions.push('(u.name LIKE ? OR u.email LIKE ? OR u.uid LIKE ? OR u.user_id LIKE ? OR u.id LIKE ? OR w.details LIKE ? OR w.method LIKE ? OR w.id LIKE ?)');
       const searchWildcard = `%${search.trim()}%`;
-      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
+      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
     }
 
     if (conditions.length > 0) {
@@ -1635,9 +1635,9 @@ export const getAllTransactionsAdmin = async (req, res) => {
     const params = [];
 
     if (search) {
-      whereParts.push('(u.name LIKE ? OR u.email LIKE ? OR u.user_id LIKE ? OR t.description LIKE ? OR t.source LIKE ?)');
+      whereParts.push('(u.name LIKE ? OR u.email LIKE ? OR u.user_id LIKE ? OR u.uid LIKE ? OR u.id LIKE ? OR t.description LIKE ? OR t.source LIKE ?)');
       const searchWildcard = `%${search.trim()}%`;
-      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
+      params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
     }
 
     if (type && type !== 'ALL') {

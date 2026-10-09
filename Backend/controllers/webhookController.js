@@ -429,7 +429,7 @@ export const handlePubscaleChargeback = async (req, res) => {
 export const handleCpxResearch = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const CPX_SECURE_HASH = "c61DO2Aq2vD6kZZ9OlLZzNtiXPoDrh2R";
+    const CPX_SECURE_HASH = process.env.CPX_SECURE_HASH || "yyZpfQ6EDvthdxvFYbbhJHfED6FhH1N6";
     const { status, trans_id, user_id, amount_local = 0, hash, type = '', offer_id = '' } = req.query;
 
     console.log('[CPX_RESEARCH] Incoming:', req.query);
@@ -1519,7 +1519,7 @@ async function processReferralRewards(referredUserId, rewardAmount, offerId) {
 export const handleTimewall = async (req, res) => {
   const connection = await pool.getConnection();
   try {
-    const TIMEWALL_SECRET = "d59bfb7fb7918ce0b692b4bc27420cff";
+    const TIMEWALL_SECRET = process.env.TIMEWALL_SECRET || "0a36bba8e80a061a6e4246fb5644d7d3";
     const params = { ...req.query, ...req.body };
     const {
       user_id: user_id_param,

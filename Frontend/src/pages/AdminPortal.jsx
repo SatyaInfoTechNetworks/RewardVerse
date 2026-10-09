@@ -1436,11 +1436,11 @@ export default function AdminPortal() {
                   <div className="card-header border-0 bg-transparent">
                     <h3 className="card-title font-weight-bold">Member Directory</h3>
                     <div className="card-tools">
-                      <div className="input-group input-group-sm" style={{ width: '250px' }}>
+                      <div className="input-group input-group-sm" style={{ width: '320px' }}>
                         <input 
                           type="text" 
                           className="form-control rounded-left" 
-                          placeholder="Search users..." 
+                          placeholder="Search Name, Email, Google UID, Hex ID..." 
                           value={userSearch}
                           onChange={(e) => setUserSearch(e.target.value)}
                         />
@@ -1474,7 +1474,10 @@ export default function AdminPortal() {
                             <td>
                               <div className="d-flex align-items-center">
                                 <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'Admin')}&background=007bff&color=fff&size=30`} className="img-circle mr-2" style={{ width: '30px', height: '30px', objectFit: 'cover' }} />
-                                <span className="font-weight-bold">{u.name || 'Anonymous'}</span>
+                                <div>
+                                  <span className="font-weight-bold">{u.name || 'Anonymous'}</span>
+                                  {u.uid && <div className="text-xs text-muted" title="Google UID" style={{ fontSize: '11px' }}><i className="fab fa-google text-danger mr-1"></i>{u.uid}</div>}
+                                </div>
                               </div>
                             </td>
                             <td>
